@@ -18,14 +18,14 @@ def row2mat(row, n):
 def LR_Maxwell(model_params, time, indentation, radius):
     time_matrix = row2mat(time, model_params[1::2].size)
     relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-    relaxance[0] = (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])
+    relaxance[0] = (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # delta function
     return 16 * sqrt(radius) / 3 * convolve(indentation ** (3 / 2), relaxance, mode='full')[:time.size] * (time[1] - time[0])
 
 
 def LR_Voigt(model_params, time, force, radius):
     time_matrix = row2mat(time, model_params[1::2].size)
-    retardance = sum(model_params[1::2] / model_params[2::2] * exp( - time_matrix / model_params[2::2]), axis=1)
-    retardance[0] = (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])
+    retardance = sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
+    retardance[0] = (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # delta function
     return 3 / (8 * sqrt(radius)) * convolve(force ** (3 / 2), retardance, mode='full')[:time.size] * (time[1] - time[0])
 
 

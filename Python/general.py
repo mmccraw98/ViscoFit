@@ -1,4 +1,4 @@
-from numpy import array, sum, sqrt, convolve, exp, ones, cos, dot, pi, arccos, kron, tile, abs, log10, insert, linalg, indices, ndarray, concatenate, argmin
+from numpy import array, sum, sqrt, convolve, exp, ones, zeros, tile, ndarray, concatenate, argmin
 from numpy.random import uniform
 from scipy.optimize import minimize, dual_annealing
 from time import time
@@ -86,21 +86,28 @@ class LR_Maxwell():
         self.indentation = concatenate(indentations)
         # create a 'mask' of radii to scale each experiment
         self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+        # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
+        diracs = []
+        for t in times:
+            temp = zeros(t.shape)
+            temp[0] = 1
+            diracs.append(temp)
+        self.diracs = concatenate(diracs)
 
-    def LR_force(self, relaxance):
-        time_matrix = row2mat(self.time, relaxance[1::2].size)
-        relaxance = - sum(relaxance[1::2] / relaxance[2::2] * exp(- time_matrix / relaxance[2::2]), axis=1)
-        relaxance[0] = (relaxance[0] + sum(relaxance[1::2])) / (time[1] - time[0])  # delta function
+    def LR_force(self, model_params):
+        time_matrix = row2mat(self.time, model_params[1::2].size)
+        relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
+        relaxance += ((relaxance + sum(model_params[1::2])) * self.diracs) / self.dts  # add the delta function of the relaxances
         return 16 * sqrt(self.radii) / 3 * convolve(self.indentation ** (3 / 2), relaxance, mode='full')[:self.time.size] * self.dts
 
-    def LR_force_fluidity(self, relaxance): #@TODO implement fluidity here as well as fit and fit_slow
+    def LR_force_fluidity(self, model_params): #@TODO implement fluidity here as well as fit and fit_slow
         raise NotImplementedError
 
-    def SSE_fluidity(self, relaxance): #@TODO implement fluidity here as well as fit and fit_slow
+    def SSE_fluidity(self, model_params): #@TODO implement fluidity here as well as fit and fit_slow
         raise NotImplementedError
 
-    def SSE(self, relaxance):
-        return sum((self.LR_force(relaxance=relaxance) - self.force) ** 2, axis=0)
+    def SSE(self, model_params):
+        return sum((self.LR_force(model_params=model_params) - self.force) ** 2, axis=0)
 
     def fit(self, maxiter=1000, max_size=4, E_logbounds=(1, 9), T_logbounds=(-5, 0), fit_sequential=True): #@TODO implement sequential fitting and fluidity
         if fit_sequential:

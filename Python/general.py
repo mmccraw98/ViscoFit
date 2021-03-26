@@ -636,7 +636,6 @@ class LR_PowerLaw():
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
 
 
-#@TODO add initial guesses and bounds to both nelder mead and dual annealing
 class Custom_Model():
     def __init__(self, forces, times, indentations, radii):
         # if there are multiple inputs
@@ -708,8 +707,5 @@ class Custom_Model():
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
 
 
-#@TODO test bounds
-#@TODO fix bounds to be programmatically better
-#@TODO add many fits with statistics
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader

@@ -1,6 +1,20 @@
 import numpy as np
-from general import Custom_Model
+import matplotlib.pyplot as plt
+from general import Custom_Model, LR_Maxwell_Force, LR_Voigt_Indentation, LR_Maxwell, LR_Voigt, LR_PowerLaw, row2mat
 
+relaxance = np.array([1e4, 1e5, 1e-2])
+retardance = np.array([1e-10, 1e-9, 1e-5])
+
+times = [np.linspace(0, 1, 500) for i in range(2)]
+indentations = [time / max(time) * 10 * (i + 1) * 10e-9 for i, time in enumerate(times)]
+radii = [20 * (i + 1) * 1e-9 for i in range(len(times))]
+forces = [LR_Maxwell_Force(relaxance, t, h, r) for t, h, r in zip(times, indentations, radii)]
+
+a = LR_Voigt(forces, times, indentations, radii)
+
+print(a.fit_slow())
+
+quit()
 # this is a 'fake' force to simulate something that we get from the AFM
 def force_basic(h, R):
     return R * 5 * h ** 3

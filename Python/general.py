@@ -83,30 +83,39 @@ class LR_Maxwell():
         :param E_logbounds: tuple (float, float) high and low log bound for the elastic elements in the model
         :param T_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
-        # convert all inputs to lists if not already done
-        if type(forces) not in (ndarray, list):
-            forces = [forces]
-            times = [times]
-            indentations = [indentations]
-            radii = [radii]
-        # check for any size mismatches
-        if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
-            exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
-        # concatenate the lists of experimental observables to put them into a single row vector form
-        self.force = concatenate(forces)
-        self.time = concatenate(times)
-        self.indentation = concatenate(indentations)
-        # create a 'mask' of dt to properly integrate each experiment
-        self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
-        # create a 'mask' of radii to scale each experiment
-        self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
-        # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
-        diracs = []
-        for t in times:
-            temp = zeros(t.shape)
+        # if there are multiple inputs
+        if type(forces) is list:
+            # check for any size mismatches
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
+                exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
+            # concatenate the lists of experimental observables to put them into a single row vector form
+            self.force = concatenate(forces)
+            self.time = concatenate(times)
+            self.indentation = concatenate(indentations)
+            # create a 'mask' of dt to properly integrate each experiment
+            self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
+            # create a 'mask' of radii to scale each experiment
+            self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+            # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
+            diracs = []
+            for t in times:
+                temp = zeros(t.shape)
+                temp[0] = 1
+                diracs.append(temp)
+            self.diracs = concatenate(diracs)
+        # if there are single inputs
+        else:
+            self.force = forces
+            self.time = times
+            self.indentation = indentations
+            # dt is a single value rather than a 'mask' array as seen above
+            self.dts = self.time[1] - self.time[0]
+            # radius is a single value rather than a 'mask' array as seen above
+            self.radii = radii
+            # create a single dirac delta function with magnitude 1 at time 0
+            temp = zeros(self.time.shape)
             temp[0] = 1
-            diracs.append(temp)
-        self.diracs = concatenate(diracs)
+            self.diracs = temp
         # define the boundaries
         self.E_logbounds = E_logbounds
         self.T_logbounds = T_logbounds
@@ -245,30 +254,39 @@ class LR_Voigt():
         :param J_logbounds: tuple (float, float) high and low log bound for the compliance elements in the model
         :param T_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
-        # convert all inputs to lists if not already done
-        if type(forces) not in (ndarray, list):
-            forces = [forces]
-            times = [times]
-            indentations = [indentations]
-            radii = [radii]
-        # check for any size mismatches
-        if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
-            exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
-        # concatenate the lists of experimental observables to put them into a single row vector form
-        self.force = concatenate(forces)
-        self.time = concatenate(times)
-        self.scaled_indentation = concatenate(indentations) ** (3 / 2)
-        # create a 'mask' of dt to properly integrate each experiment
-        self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
-        # create a 'mask' of radii to scale each experiment
-        self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
-        # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
-        diracs = []
-        for t in times:
-            temp = zeros(t.shape)
+        # if there are multiple inputs
+        if type(forces) is list:
+            # check for any size mismatches
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
+                exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
+            # concatenate the lists of experimental observables to put them into a single row vector form
+            self.force = concatenate(forces)
+            self.time = concatenate(times)
+            self.scaled_indentation = concatenate(indentations) ** (3 / 2)
+            # create a 'mask' of dt to properly integrate each experiment
+            self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
+            # create a 'mask' of radii to scale each experiment
+            self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+            # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
+            diracs = []
+            for t in times:
+                temp = zeros(t.shape)
+                temp[0] = 1
+                diracs.append(temp)
+            self.diracs = concatenate(diracs)
+        # if there are single inputs
+        else:
+            self.force = forces
+            self.time = times
+            self.scaled_indentation = indentations ** (3 / 2)
+            # dt is a single value rather than a 'mask' array as seen above
+            self.dts = self.time[1] - self.time[0]
+            # radius is a single value rather than a 'mask' array as seen above
+            self.radii = radii
+            # create a single dirac delta function with magnitude 1 at time 0
+            temp = zeros(self.time.shape)
             temp[0] = 1
-            diracs.append(temp)
-        self.diracs = concatenate(diracs)
+            self.diracs = temp
         # define the boundaries
         self.J_logbounds = J_logbounds
         self.T_logbounds = T_logbounds
@@ -407,24 +425,41 @@ class LR_PowerLaw():
         :param E0_logbounds: tuple (float, float) high and low log bound for the compliance elements in the model
         :param a_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
-        # convert all inputs to lists if not already done
-        if type(forces) not in (ndarray, list):
-            forces = [forces]
-            times = [times]
-            indentations = [indentations]
-            radii = [radii]
-        # check for any size mismatches
-        if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
-            exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
-        # concatenate the lists of experimental observables to put them into a single row vector form
-        self.force = concatenate(forces)
-        self.time = concatenate(times)
-        # create a 'mask' of dt to properly integrate each experiment
-        self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
-        # create a 'mask' of radii to scale each experiment
-        self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
-        # calculate the numerical derivatives of the scaled indentations (h^3/2)
-        self.scaled_indentations_deriv = concatenate([concatenate(([0], diff(indentation ** (3 / 2)))) for indentation in indentations]) / self.dts
+        # if there are multiple inputs
+        if type(forces) is list:
+            # check for any size mismatches
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
+                exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
+            # concatenate the lists of experimental observables to put them into a single row vector form
+            self.force = concatenate(forces)
+            self.time = concatenate(times)
+            # create a 'mask' of dt to properly integrate each experiment
+            self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
+            # create a 'mask' of radii to scale each experiment
+            self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+            # create a train of dirac delta functions with magnitude 1 at time 0 for each time signal
+            diracs = []
+            for t in times:
+                temp = zeros(t.shape)
+                temp[0] = 1
+                diracs.append(temp)
+            self.diracs = concatenate(diracs)
+            # calculate the numerical derivatives of the scaled indentations (h^3/2)
+            self.scaled_indentations_deriv = concatenate([concatenate(([0], diff(indentation ** (3 / 2)))) for indentation in indentations]) / self.dts
+        # if there are single inputs
+        else:
+            self.force = forces
+            self.time = times
+            # dt is a single value rather than a 'mask' array as seen above
+            self.dts = self.time[1] - self.time[0]
+            # radius is a single value rather than a 'mask' array as seen above
+            self.radii = radii
+            # create a single dirac delta function with magnitude 1 at time 0
+            temp = zeros(self.time.shape)
+            temp[0] = 1
+            self.diracs = temp
+            # calculate the numerical derivatives of the scaled indentations (h^3/2)
+            self.scaled_indentations_deriv = concatenate(([0], diff(indentations ** (3 / 2)))) / self.dts
         # define the boundaries
         self.E0_logbounds = E0_logbounds
         self.a_logbounds = a_logbounds
@@ -497,61 +532,41 @@ class LR_PowerLaw():
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
 
 
-#@TODO add general fitting (user defined function)
+#@TODO add initial guesses and bounds to both nelder mead and dual annealing
 class Custom_Model():
-    def __init__(self, forces, times, indentations, radii):  #@TODO add conical and flat punch indenter options
-        '''
-        initializes an instance of the Custom_Model class
-        used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
-        to a power law rheology model which corresponds to the sample's viscoelastic behavior
-        :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
-        :param times: either list of numpy arrays or single numpy array corresponding to the time signals from an AFM
-        :param indentations: either list of numpy arrays or single numpy array corresponding to the indentation signals from an AFM
-        :param radii: either list of floats or single float corresponding to the tip radii of an AFM
-        '''
-        # convert all inputs to lists if not already done
-        if type(forces) not in (ndarray, list):
-            forces = [forces]
-            times = [times]
-            indentations = [indentations]
-            radii = [radii]
-        # check for any size mismatches
-        if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
-            exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
-        # concatenate the lists of experimental observables to put them into a single row vector form
-        self.force = concatenate(forces)
-        self.time = concatenate(times)
-        self.indentations = concatenate(indentations)
-        # create a 'mask' of dt to properly integrate each experiment
-        self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
-        # create a 'mask' of radii to scale each experiment
-        self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+    def __init__(self, forces, times, indentations, radii):
+        # if there are multiple inputs
+        if type(forces) is list:
+            # check for any size mismatches
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
+                exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
+            # concatenate the lists of experimental observables to put them into a single row vector form
+            self.force = concatenate(forces)
+            self.time = concatenate(times)
+            self.indentation = concatenate(indentations)
+            # create a 'mask' of dt to properly integrate each experiment
+            self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
+            # create a 'mask' of radii to scale each experiment
+            self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
+        # if there are single inputs
+        else:
+            self.force = forces
+            self.time = times
+            self.indentation = indentations
+            # dt is a single value rather than a 'mask' array as seen above
+            self.dts = self.time[1] - self.time[0]
+            # radius is a single value rather than a 'mask' array as seen above
+            self.radii = radii
+        # defining the currently empty target observable and the observable function
+        self.target_observable = None
+        self.observable_function = None
 
-    def LR_force(self, model_params):
-        '''
-        calculates the force respones for a generalized maxwell model according to the lee and radok contact mechanics formulation
-        :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power law exponent (a) in the following form
-        array([E0, a])
-        :return: numpy array scaled 'predicted' force signals for all real (experimentally obtained) forces
-        '''
-        relaxation = model_params[0] * (1 + self.time / self.dts) ** (- model_params[1])
-        return 16 * sqrt(self.radii) / 3 * convolve(self.indentations, relaxation, mode='full')[:self.time.size] * self.dts
-
-    def SSE(self, model_params):
-        '''
-        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) force signals
-        :param model_params: numpy array of model parameters (refer to LR_force)
-        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (h^3/2)
-        '''
-        sse = sum((self.LR_force(model_params=model_params) - self.force) ** 2, axis=0)
-        if (any(self.E0_logbounds[0] < model_params[0] < self.E0_logbounds[1])
-                or any(self.a_logbounds[0] < model_params[1] < self.a_logbounds[1])):
-            sse *= 1e20
-        return sse
+    def SSE(self, params):
+        return sum((self.observable_function(params) - self.target_observable) ** 2, axis=0)
 
     def fit(self, maxiter=1000):
         '''
-        fit experimental force distance curve(s) to power law rheology model using a nelder-mead simplex which typically gives good fits rather quickly
+        fit experimental observable of your choice to a custom model for the observable using a nelder-mead simplex which typically gives good fits rather quickly
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
         :return: dict {best_fit, (numpy array of final best fit params),
                        final_cost, (float of final cost for the best fit params),
@@ -569,13 +584,28 @@ class Custom_Model():
         best_fit = data[argmin(data[:, 1])]
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
 
-import numpy as np
-def force_basic(h, R):
-    return R * 5 * h ** 3
+    def fit_slow(self, maxiter=1000):
+        '''
+        fit experimental observable of your choice to a custom model for the observable using simulated annealing with
+        a nelder-mead simplex local search, this is very computationally costly and will take a very long time
+        though typically results in much better fits
+        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
+        :return: dict {best_fit, (numpy array of final best fit params),
+                       final_cost, (float of final cost for the best fit params),
+                       time, (float of time taken to generate best fit)}
+        '''
+        data = []
+        tic()
+        results = dual_annealing(self.SSE, maxiter=maxiter, local_search_options={'method': 'nelder-mead'})
+        data.append([results.x, results.fun, toc(True)])
 
-# make function for an observable
-# pass function to sse
+        data = array(data)
+        best_fit = data[argmin(data[:, 1])]
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
+
 
 #@TODO test bounds
 #@TODO fix bounds to be programmatically better
 #@TODO add many fits with statistics
+#@TODO add conical and flat punch indenter options
+#@TODO add the ibw reader

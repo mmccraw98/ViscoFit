@@ -1,8 +1,46 @@
-classdef SSE_Fitting_Simultaneous
-    %SSE_Fitting Class Containing All Info Necessary to Calculate the SSE
+classdef ViscoFit
+    %ViscoFit Class Containing All Info Necessary to Extract Viscoelastic
+    %Parameters
     %   This class, once initialized with the appropriate information, can
-    %   calculate the Sum of Squared Errors (SSE) for multiple experiments
-    %   at once.
+    %   perform a variety of viscoelastic parameterization operations. It
+    %   must be initialized with the observed force, time, indentation, tip
+    %   size (either spherical tip radius or indenter cone angle), the
+    %   minimum timescale to begin fitting with: 
+    %   "forces" - {1xN} - Cell array containing repulsive force array from
+    %   experiments 1 to N (if more than one experiment is considered). The
+    %   units are NEWTONS. The arrays must use DOUBLE PRECISION.
+    
+    %   "times" - {1xN} - Cell array containing repulsive time array from
+    %   experiments 1 to N (if more than one experiment is considered). The
+    %   units are SECONDS. The arrays must use DOUBLE PRECISION.
+    
+    %   "indentations" - {1xN} - Cell array containing repulsive
+    %   indentation observed for experiments 1 to N (if more than one 
+    %   experiment is considered). The units are METERS. The arrays must 
+    %   use DOUBLE PRECISION.
+    
+    %   "tipSize" - {1xN} - Cell array containing the characteristic tip
+    %   size, either the tip radius (for spherical indentation, the
+    %   default) or cone angle (for conical indentation). Note that for
+    %   conical indentation, an additional argument must be passed to
+    %   overwrite the default spherical indentation setting. The units are
+    %   METERS (spherical) or DEGREES (conical).  The values must use 
+    %   DOUBLE PRECISION.
+    
+    %   "minTimescale" - double - Single value which will be the "center"
+    %   of the characteristic time range for the first viscoelastic element
+    %   in the generalized rheological models. This is not necessary when
+    %   using the PLR model; when using PLR, set this value to ONE.  The 
+    %   value must use DOUBLE PRECISION.
+    
+    %   Additionally, the class can take a variety of other settings:
+    
+    %   Optional Argument #1 - the sample's poisson's ratio, if known, and
+    %   not equal to 0.5 (incompressible) which is the default.
+    
+    %   Optional Argument #2 - the tip geometry, a string of either
+    %   "spherical" or "conical", which determines how the tipSize argument
+    %   is interpreted.
     
     properties
         forces double
@@ -16,8 +54,8 @@ classdef SSE_Fitting_Simultaneous
     end
     
     methods
-        function obj = SSE_Fitting_Simultaneous(forces,times,indentations,tipSize,minTimescale,varargin)
-            %SSE_Fitting Construct an instance of the SSE_Fitting class
+        function obj = ViscoFit(forces,times,indentations,tipSize,minTimescale,varargin)
+            %ViscoFit Construct an instance of the ViscoFit class
             %   This class is utilized to perform the parameter
             %   optimization steps. It helps collect the relevant data for
             %   multiple load-level fitting (i.e. multiple approach
@@ -101,7 +139,7 @@ classdef SSE_Fitting_Simultaneous
             if any(ub-params < 0) || any(params-lb < 0)
                 sse = Inf;
             end
-        end
+        end % End Maxwell SSE Function
         
         function sse = SSE_Voigt(obj,params)
             %SSE_Voigt Calculate the SSE for the Voigt model
@@ -142,7 +180,30 @@ classdef SSE_Fitting_Simultaneous
             if any(ub-params < 0) || any(params-lb < 0)
                 sse = Inf;
             end
-        end
+        end % End Voigt SSE Function
+        
+        function sse = SSE_PLR(obj,params)
+            %SSE_Maxwell Calculate the SSE for the Maxwell model
+            %   Calculate the Sum of Squared Errors for the Generalized
+            %   Maxwell Model according to the Lee and Radok indentation
+            %   configuration, given a set of input parameters (params).
+            
+            % Calculate test forces
+            test_forces = LR_PLR(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom);
+            
+            % calculate global residual
+            sse_global = sum((obj.forces-test_forces).^2);
+            sse = sum(sse_global);
+            
+            % Power Law Rheology Roster:
+            % [E_0 alpha]
+            ub = [1e12 1];
+            lb = [1e-2 0];
+            
+            if any(ub-params < 0) || any(params-lb < 0)
+                sse = Inf;
+            end
+        end % End PLR SSE Function
         
         function fitStruct = fit(obj, varargin)
             % FIT Fit a Viscoelastic Model to the Class Data 
@@ -210,6 +271,8 @@ classdef SSE_Fitting_Simultaneous
                 case 'voigt'
                     objFunc = @SSE_Voigt;
                 case 'PLR'
+                    objFunc = @SSE_PLR;
+                case 'custom'
                     objFunc = @customFunc;
                 otherwise
                     error('Your chosen solver-model combination is not implemented yet.');
@@ -270,7 +333,7 @@ classdef SSE_Fitting_Simultaneous
                         ub(modulusInds) = 1e12;
                         lb(modulusInds) = 1e-2;
 
-                        tauCenters = obj.minTimescale.*(10.^( (1:length(params(3:2:end)))-1 ));
+                        tauCenters = obj.minTimescale.*(10.^( (1:length(ub(3:2:end)))-1 ));
                         ub(tauInds) = tauCenters*10;
                         lb(tauInds) = tauCenters/10;
                         
@@ -281,7 +344,7 @@ classdef SSE_Fitting_Simultaneous
 
                         if fluidSetting
                             ub(2) = max(tauCenters)*1e2;
-                            lb(2) = min(obj.dts);
+                            lb(2) = 10^( floor(min(log10(obj.dts)))+1 );
                         end
                         
                         % Restrict the range of random guesses, if desired.
@@ -297,7 +360,7 @@ classdef SSE_Fitting_Simultaneous
                         ub(modulusInds) = 1e2;
                         lb(modulusInds) = 1e-12;
 
-                        tauCenters = obj.minTimescale.*(10.^( (1:length(params(3:2:end)))-1 ));
+                        tauCenters = obj.minTimescale.*(10.^( (1:length(ub(3:2:end)))-1 ));
                         ub(tauInds) = tauCenters*10;
                         lb(tauInds) = tauCenters/10;
                         
@@ -328,6 +391,15 @@ classdef SSE_Fitting_Simultaneous
                         % Otherwise, they should be set equal to ub & lb
                         ub_rand = ub;
                         lb_rand = lb;
+                        
+                    case 'custom'
+                        
+                        % Define the upper and lower bounds for your custom
+                        % function here. The output from this region should
+                        % be two arrays, ub and lb, which are the same
+                        % length as the number of parameters in the model.
+                        % ub = [...];
+                        % lb = [...];
                         
                 end
                 
@@ -516,10 +588,6 @@ classdef SSE_Fitting_Simultaneous
                         close(hbar);
                         warning('on');
                         
-                    case 'custom'
-                        
-                        % TBD
-                        
                     otherwise
                         error('That solver is not supported.')
                 end
@@ -538,18 +606,29 @@ classdef SSE_Fitting_Simultaneous
                 % Store the timing for this model configuration fit
                 fitStruct.fitTime = horzcat(fitStruct.fitTime,{postFitting-preFitting});
                 
-                if strcmp(model,'PLR')
+                if any(strcmp(model,'PLR'))
                     % The PLR model does not utilize more than a single
                     % term, so "iterative term introduction" has no
                     % meaning in this case. As such, the remaining
                     % iterations are skipped and the results are returned
+                    
+                    % To stop the iterative term introduction for one of
+                    % the models, add an additional strcmp(model,'{name}')
+                    % after the one in this if statement declaration,
+                    % separated by a comma. The any() will trigger if the
+                    % type is PLR or whatever new entry you have added.
+                    % This is primarily in the case where you have a
+                    % custom model that does not use iterative term
+                    % introduction.
+                    
                     break;
                 end
                 
-            end
+            end % End Iterative Term Introduction Loop
             
-        end
+        end % End Fit()
         
-    end
+    end % End Methods
+    
 end
 

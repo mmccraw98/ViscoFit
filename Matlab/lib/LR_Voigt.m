@@ -30,22 +30,26 @@ switch tipGeom
         c = 1./(4*tan(tipSize));
 end
 
-% Make our time matrix (for all the arms)
-time_mat = row2mat(time,length(params(3:2:end)));
-dirac = zeros(size(time));
-dirac(time-dt==0) = 1;
+if length(params) > 1
+    % Make our time matrix (for all the arms)
+    time_mat = row2mat(time,length(params(3:2:end)));
+    dirac = zeros(size(time));
+    dirac(time-dt==0) = 1;
 
-% Calculate the amount of relaxation that occurs for all arms in time. This
-% quantity in time will be removed from the initial modulus response, Eg
-U_arms = sum(params(3:2:end)./params(4:2:end).*exp(-time_mat./params(4:2:end)),1);
+    % Calculate the amount of relaxation that occurs for all arms in time. This
+    % quantity in time will be removed from the initial modulus response, Eg
+    U_arms = sum(params(3:2:end)./params(4:2:end).*exp(-time_mat./params(4:2:end)),1);
 
-% Add the initial compliance, Jg, such that it is increased to Je as time
-% stretches toward infinity
-if params(2) > 2*eps
-    % Steady-state fluidity is added to the Retardance
-    U = params(1).*(dirac./dt) + U_arms + params(2);
+    % Add the initial compliance, Jg, such that it is increased to Je as time
+    % stretches toward infinity
+    if params(2) > 2*eps
+        % Steady-state fluidity is added to the Retardance
+        U = params(1).*(dirac./dt) + U_arms + params(2);
+    else
+        U = params(1).*(dirac./dt) + U_arms;
+    end
 else
-    U = params(1).*(dirac./dt) + U_arms;
+    U = params(1).*(dirac./dt);
 end
 
 % Calculate the action integral quantity

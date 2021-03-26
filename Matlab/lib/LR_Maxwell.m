@@ -32,23 +32,27 @@ switch tipGeom
         beta = 2;
 end
 
-% Make our time matrix (for all the arms)
-time_mat = row2mat(time,length(params(3:2:end)));
-dirac = zeros(size(time));
-dirac(time-dt==0) = 1;
+if length(params) > 1
+    % Make our time matrix (for all the arms)
+    time_mat = row2mat(time,length(params(3:2:end)));
+    dirac = zeros(size(time));
+    dirac(time-dt==0) = 1;
 
-% Calculate the amount of relaxation that occurs for all arms in time. This
-% quantity in time will be removed from the initial modulus response, Eg
-Q_arms = sum(params(3:2:end)./params(4:2:end).*exp(-time_mat./params(4:2:end)),1);
+    % Calculate the amount of relaxation that occurs for all arms in time. This
+    % quantity in time will be removed from the initial modulus response, Eg
+    Q_arms = sum(params(3:2:end)./params(4:2:end).*exp(-time_mat./params(4:2:end)),1);
 
-% Add the initial modulus, Eg, such that it is relaxed to Ee as time
-% stretches toward infinity
-if params(2) > 2*eps
-    % Eg relaxes in time due to the steady-state viscosity stored inside
-    % params(2)
-    Q = sum(params(1:2:end)).*(dirac./dt) - (params(1)./params(2).*exp(-time./params(2))) - Q_arms;
+    % Add the initial modulus, Eg, such that it is relaxed to Ee as time
+    % stretches toward infinity
+    if params(2) > 2*eps
+        % Eg relaxes in time due to the steady-state viscosity stored inside
+        % params(2)
+        Q = sum(params(1:2:end)).*(dirac./dt) - (params(1)./params(2).*exp(-time./params(2))) - Q_arms;
+    else
+        Q = sum(params(1:2:end)).*(dirac./dt) - Q_arms; % Relax Eg in time
+    end
 else
-    Q = sum(params(1:2:end)).*(dirac./dt) - Q_arms; % Relax Eg in time
+    Q = params(1).*(dirac./dt);
 end
 
 % Calculate the action integral quantity

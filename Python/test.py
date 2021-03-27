@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from viscofit import Custom_Model, LR_Maxwell_Force, LR_Voigt_Indentation, LR_Maxwell, LR_Voigt, LR_PowerLaw, row2mat, LR_PowerLaw_Force
+from viscofit import customModel, forceMaxwell_LeeRadok, indentationKelvinVoigt_LeeRadok, maxwellModel, kelvinVoigtModel, powerLawModel, row2mat, forcePowerLaw_LeeRadok
 
 import igor
 
@@ -15,7 +15,7 @@ R = 1
 forces = afm_force_signal(indentation, R)
 
 # define the custom model and put in the experimental observables
-model = Custom_Model(forces, times, indentation, R)
+model = customModel(forces, times, indentation, R)
 
 # define the function for the desired observable, note: the observables in the function MUST come from the model
 def force_func(params):

@@ -36,7 +36,7 @@ def toc(return_numeric=False):
         print('process completed in {:.2f}s'.format(time() - current_time))
 
 
-def LR_Maxwell_Force(model_params, time, indentation, radius):
+def forceMaxwell_LeeRadok(model_params, time, indentation, radius):
     '''
     calculates the response force for a generalized maxwell model according to the lee and radok contact mechanics formulation
     :param model_params: numpy array contains the model stiffnesses and time constants in either of the two following forms:
@@ -60,7 +60,7 @@ def LR_Maxwell_Force(model_params, time, indentation, radius):
     return 16 * sqrt(radius) / 3 * convolve(relaxance, indentation ** (3 / 2), mode='full')[:time.size] * (time[1] - time[0])
 
 
-def LR_Voigt_Indentation(model_params, time, force, radius):
+def indentationKelvinVoigt_LeeRadok(model_params, time, force, radius):
     '''
     calculates the response indentation for a kelvin-voigt model according to the lee and radok contact mechanics formulation
     :param model_params: numpy array contains the model compliances and time constants in either of the two following forms:
@@ -86,7 +86,7 @@ def LR_Voigt_Indentation(model_params, time, force, radius):
     return (3 / (8 * sqrt(radius)) * convolve(force, retardance, mode='full')[:time.size] * (time[1] - time[0])) ** (2 / 3)
 
 
-def LR_PowerLaw_Force(model_params, time, indentation, radius):
+def forcePowerLaw_LeeRadok(model_params, time, indentation, radius):
     '''
     calculates the force respones for a generalized maxwell model according to the lee and radok contact mechanics formulation
     :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power law exponent (a) in the following form
@@ -101,10 +101,10 @@ def LR_PowerLaw_Force(model_params, time, indentation, radius):
     return 16 * sqrt(radius) / 3 * convolve(relaxation, scaled_indentations_deriv, mode='full')[:time.size] * (time[1] - time[0])
 
 
-class LR_Maxwell():
+class maxwellModel():
     def __init__(self, forces, times, indentations, radii, E_logbounds=(1, 9), T_logbounds=(-5, 0)):  #@TODO add conical and flat punch indenter options
         '''
-        initializes an instance of the LR_Maxwell class
+        initializes an instance of the maxwellModel class
         used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
         to a maxwell model which corresponds to the sample's viscoelastic behavior
         :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
@@ -338,10 +338,10 @@ class LR_Maxwell():
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2], 'trial_variance': best_fit[3]}  # return the best overall fit data
 
 
-class LR_Voigt():
+class kelvinVoigtModel():
     def __init__(self, forces, times, indentations, radii, J_logbounds=(-9, -1), T_logbounds=(-5, 0)):  #@TODO add conical and flat punch indenter options
         '''
-        initializes an instance of the LR_Voigt class
+        initializes an instance of the kelvinVoigtModel class
         used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
         to a kelvin-voigt model which corresponds to the sample's viscoelastic behavior
         :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
@@ -386,18 +386,25 @@ class LR_Voigt():
         normal model: array([Elastic Compliance, Arm 1 Compliance, Arm 1 Time Constant, ... Arm N Compliance, Arm N Time Constant])
         :return: numpy array scaled 'predicted' indentation signals (h^3/2) for all real (experimentally obtained) forces
         '''
-        def make_retardance(t, dt):
+        def make_retardance(t, dt):  # function to make the retardance signal for an experiment given its parameters
             if model_params.size % 2 == 0:  # fluidity case:
-                time_matrix = row2mat(t, model_params[3::2].size)
+                time_matrix = row2mat(t, model_params[3::2].size)  # needed for vectorized math with model parameter vectors
+                # calculate the retardance
+                # U = Jg + sum_i_N+1( Ji / Ti * exp( -t / Ti ) ) <- sum over all arms
                 retardance = sum(model_params[2::2] / model_params[3::2] * exp(- time_matrix / model_params[3::2]), axis=1) + model_params[1]
                 retardance += model_params[0] / dt  # add the delta function to the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             else:  # no fluidity case
-                time_matrix = row2mat(t, model_params[1::2].size)
+                time_matrix = row2mat(t, model_params[1::2].size)  # needed for vectorized math with model parameter vectors
+                # calculate the retardance
+                # U = Jg + sum_i_N( Ji / Ti * exp( -t / Ti ) ) <- sum over all but the elastic arm
                 retardance = sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
                 retardance += model_params[0] / dt  # add the delta function of the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             return retardance
+        # calculate the prediction for h^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
+        # and convert to a single row vector for easier comparison with the specified target h^3/2
+        # h( t )^3/2 = 3 / ( 8 * sqrt( R ) ) * integral_0_t( U( t - u ) * F( u ) ) du
         return array([3 / (sqrt(r) * 8) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
                       for r, t, dt, f in zip(self.radii, self.time, self.dts, self.force)]).ravel()
 
@@ -408,12 +415,15 @@ class LR_Voigt():
         :param fluidity: bool whether or not to include the fluidity term
         :return: numpy arrays of boundaries for the kelvin-voigt model (lower bound, upper bound)
         '''
+        # form the lower bounds by exponentiating the log lower bounds
         lower = 10 ** concatenate(([self.J_logbounds[0]],
                                    concatenate([[self.J_logbounds[0], self.T_logbounds[0]]
                                                 for i in range(model_size)]))).astype(float)
+        # form the upper bounds by exponentiating the log upper bounds
         upper = 10 ** concatenate(([self.J_logbounds[1]],
                                    concatenate([[self.J_logbounds[1], self.T_logbounds[1]]
                                                 for i in range(model_size)]))).astype(float)
+        # if there is fluidity in the model, insert a time constant bound after the first element
         if fluidity:
             lower = insert(lower, 1, 10 ** self.T_logbounds[0])
             upper = insert(upper, 1, 10 ** self.T_logbounds[1])
@@ -426,10 +436,12 @@ class LR_Voigt():
         :param fluidity: bool whether or not to include the fluidity term
         :return: numpy array of initial guess for a kelvin-voigt model
         '''
+        # get a random guess within the log bounds for each parameter and exponentiate the result
         guess = 10 ** concatenate(([uniform(low=self.J_logbounds[0], high=self.J_logbounds[1])],
                                    concatenate([[uniform(low=self.J_logbounds[0], high=self.J_logbounds[1]),
                                                  uniform(low=self.T_logbounds[0], high=self.T_logbounds[1])]
                                                 for i in range(model_size)])))
+        # if there is fluidity, insert another exponentiated time constant guess after the first element
         if fluidity:
             guess = insert(guess, 1, 10 ** uniform(low=self.T_logbounds[0], high=self.T_logbounds[1]))
         return guess
@@ -438,9 +450,14 @@ class LR_Voigt():
         '''
         gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (h^3/2)
         :param model_params: numpy array of retardance parameters (refer to LR_force)
+        :param lower_bounds: numpy array result of a single get_bounds[0] function call (lower bounds)
+        :param upper_bounds: numpy array result of a single get_bounds[1] function call (upper bounds)
         :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (h^3/2)
         '''
+        # calculate the sum of squared errors between the predicted force vector and the real force vector
+        # sse = sum_ti_tf( ( h^3/2_pred( ti ) - h^3/2_real( ti ) )^2 )
         sse = sum((self.LR_scaled_indentation(model_params=model_params) - self.scaled_indentation) ** 2, axis=0)
+        # if any parameters are outside of their associated boundaries, penalize the sse with an arbitrarily large error term
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
         return sse
@@ -459,46 +476,58 @@ class LR_Voigt():
                        time, (float of time taken to generate best fit)}
         '''
         data = []  # store the global data for the fits
+        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
             current_data = []  # store the data for the current fitting attempts
-            tic()
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)
-            for fit_attempt in range(num_attempts):
-                guess = self.get_initial_guess(model_size, fluidity=False)
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess
+            tic()  # start the timer for the trial
+            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
+            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
+                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
+                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
                     guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
+                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
+                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
                 results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
                                    method='Nelder-Mead', options={'maxiter': maxiter,
                                                                   'maxfev': maxiter,
                                                                   'xatol': 1e-60,
                                                                   'fatol': 1e-60})
-                current_data.append([results.x, results.fun])
-            current_data = array(current_data, dtype='object')
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])
+                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
+            current_data = array(current_data,
+                                 dtype='object')  # convert the trial data to a numpy array for easier analysis
+            best_fit = current_data[:, 0][
+                argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
+            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True),
+                         var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
 
+        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
         for model_size in range(1, max_model_size + 1):  # fit with fluidity
             current_data = []  # store the data for the current fitting attempts
-            tic()
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=True)
-            for fit_attempt in range(num_attempts):
-                guess = self.get_initial_guess(model_size, fluidity=True)
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess
+            tic()  # start the timer for the fit
+            lower_bounds, upper_bounds = self.get_bounds(model_size,
+                                                         fluidity=True)  # get the lower and upper bounds for the model size
+            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
+                guess = self.get_initial_guess(model_size,
+                                               fluidity=True)  # get a random initial guess within the specified bounds
+                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
                     guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
+                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
                 results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
                                    method='Nelder-Mead', options={'maxiter': maxiter,
                                                                   'maxfev': maxiter,
                                                                   'xatol': 1e-60,
                                                                   'fatol': 1e-60})
-                current_data.append([results.x, results.fun])
-            current_data = array(current_data, dtype='object')
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])
+                current_data.append([results.x, results.fun])  # append the parameters and their cost
+            current_data = array(current_data,
+                                 dtype='object')  # turn the trial data into a numpy array for easier analysis
+            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
+            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True),
+                         var(current_data[:, -1])])  # save the trial with the lowest cost's data
 
-        data = array(data, dtype='object')
-        best_fit = data[argmin(data[:, 1])]
+        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
+        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                'trial_variance': best_fit[3]}
+                'trial_variance': best_fit[3]}  # return the best fit parameters
 
     def fit_slow(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
         '''
@@ -517,46 +546,57 @@ class LR_Voigt():
         data = []  # store the global data for the fits
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
             current_data = []  # store the data for the current fitting attempts
-            tic()
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)
-            bound = array((lower_bounds, upper_bounds)).T
-            for fit_attempt in range(num_attempts):
-                guess = self.get_initial_guess(model_size, fluidity=False)
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess
+            tic()  # start the timer
+            lower_bounds, upper_bounds = self.get_bounds(model_size,
+                                                         fluidity=False)  # get the lower and upper bounds for the given model size
+            bound = array(
+                (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
+            for fit_attempt in range(num_attempts):  # attempt the desired number of fit attempts
+                guess = self.get_initial_guess(model_size,
+                                               fluidity=False)  # get an initial guess within the specified bounds
+                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if using sequential fitting
                     guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
+                # minimize the SSE within the bounds using dual annealing with nelder-mead for local search
                 results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
                                          local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])
-            current_data = array(current_data, dtype='object')
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])
+                current_data.append([results.x, results.fun])  # save the parameters and the cost
+            current_data = array(current_data,
+                                 dtype='object')  # format the trial data to a numpy array for easier analysis
+            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the best fit data
+            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True),
+                         var(current_data[:, -1])])  # save the best fit from the trials
 
         for model_size in range(1, max_model_size + 1):  # fit with fluidity
             current_data = []  # store the data for the current fitting attempts
-            tic()
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=True)
-            bound = array((lower_bounds, upper_bounds)).T
-            for fit_attempt in range(num_attempts):
-                guess = self.get_initial_guess(model_size, fluidity=True)
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess
+            tic()  # start the timer
+            lower_bounds, upper_bounds = self.get_bounds(model_size,
+                                                         fluidity=True)  # get the lower and upper bounds for the given model parameters
+            bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the fitting function
+            for fit_attempt in range(num_attempts):  # perform a specified number of fitting attempts
+                guess = self.get_initial_guess(model_size,
+                                               fluidity=True)  # give an initial guess within the specified parameter bounds
+                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
                     guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
+                # minimize the SSE within the bounds using dual annealing with a nelder mead local search
                 results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
                                          local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])
-            current_data = array(current_data, dtype='object')
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])
+                current_data.append([results.x, results.fun])  # save the data for each fit trial
+            current_data = array(current_data,
+                                 dtype='object')  # convert the trial data to a numpy array for easier analysis
+            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost
+            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True),
+                         var(current_data[:, -1])])  # store the data from the best fit trial
 
-        data = array(data, dtype='object')
-        best_fit = data[argmin(data[:, 1])]
+        data = array(data, dtype='object')  # convert the overall data to a numpy array for easier analysis
+        best_fit = data[argmin(data[:, 1])]  # get the best overall fit
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                'trial_variance': best_fit[3]}
+                'trial_variance': best_fit[3]}  # return the best overall fit data
 
 
-class LR_PowerLaw():
+class powerLawModel():
     def __init__(self, forces, times, indentations, radii, E0_logbounds=(1, 9), a_logbounds=(-5, 0)):  #@TODO add conical and flat punch indenter options
         '''
-        initializes an instance of the Custom_Model class
+        initializes an instance of the customModel class
         used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
         to a power law rheology model which corresponds to the sample's viscoelastic behavior
         :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
@@ -574,13 +614,12 @@ class LR_PowerLaw():
             # concatenate the lists of experimental observables to put them into a single row vector form
             self.time = times
             self.force = concatenate(forces)
-            # create a 'mask' of dt to properly integrate each experiment
-            self.dts = [dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)]
-            # create a 'mask' of radii to scale each experiment
+            # create a list of dt and radius valued vectors for each experiment
+            self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
-            # calculate the numerical derivatives of the scaled indentations (h^3/2)
+            # calculate the numerical derivatives of the scaled indentations d/dt (h(t)^3/2)
             self.scaled_indentations_deriv = [concatenate(([0], diff(indentation ** (3 / 2)))) / dt for indentation, dt in zip(indentations, self.dts)]
-        # if there are single inputs
+        # if there are single inputs put them each into arrays except for the scaled indentation derivatives
         else:
             self.time = [times]
             # dt is a single value rather than a 'mask' array as seen above
@@ -601,8 +640,12 @@ class LR_PowerLaw():
         array([E0, a])
         :return: numpy array scaled 'predicted' force signals for all real (experimentally obtained) forces
         '''
-        def get_relaxation(t, dt):
+        def get_relaxation(t, dt):  # create the relaxation signal for a given model
+            # E( t ) = E0 * ( 1 + t / dt )^-a
             return model_params[0] * (1 + t / dt) ** (- model_params[1])
+        # calculate the 'predicted' force for each experiment and combine the total signal to single row vector
+        # for easier comparison with the experimental force
+        # F( t ) = 16 * sqrt( R ) / 3 * integral_0_t( E( t - u ) * d/dt h( u )^3/2 ) du
         return concatenate([16 * sqrt(r) / 3 * convolve(get_relaxation(t, dt), scaled_dh, mode='full')[: t.size] * dt
                             for r, t, dt, scaled_dh in zip(self.radii, self.time, self.dts, self.scaled_indentations_deriv)])
 
@@ -611,7 +654,9 @@ class LR_PowerLaw():
         gets the boundaries for a power law rheology model of a given size
         :return: numpy arrays of boundaries for the power law rheology model (lower bound, upper bound)
         '''
+        # calculate the lower bounds by exponentiating a lower end log bound for E0 and a
         lower = 10 ** array([self.E0_logbounds[0], self.a_logbounds[0]]).astype(float)
+        # calculate the upper bounds by exponentiating a upper end log bound for E0 and a
         upper = 10 ** array([self.E0_logbounds[1], self.a_logbounds[1]]).astype(float)
         return lower, upper
 
@@ -620,6 +665,8 @@ class LR_PowerLaw():
         gets random log-uniform initial guess for a power law rheology model of a given size
         :return: numpy array of initial guess for a power law rheology model
         '''
+        # calculate an initial guess by exponentiating a log bound guess within the specified ranges
+        # for E0 and a
         return 10 ** array([uniform(low=self.E0_logbounds[0], high=self.E0_logbounds[1]),
                             uniform(low=self.a_logbounds[0], high=self.a_logbounds[1])])
 
@@ -631,7 +678,10 @@ class LR_PowerLaw():
         :param upper_bounds: numpy array result of a single get_bounds[1] function call (upper bounds)
         :return: float sum of squared errors between the scaled 'predicted' and real force signals
         '''
+        # calculate the sum of squared errors between the 'predicted' force and the real force
+        # sse = sum_ti_tf( ( F_predicted( ti ) - F_real( ti ) )^2 )
         sse = sum((self.LR_force(model_params=model_params) - self.force) ** 2, axis=0)
+        # if the current model parameters are outside of the specified boundaries, return an arbitrarily largely scaled sse
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
         return sse
@@ -647,19 +697,20 @@ class LR_PowerLaw():
                        time, (float of time taken to generate best fit)}
         '''
         data = []  # store the global data for the fits
-        tic()
-        for fit_attempt in range(num_attempts):
-            lower_bounds, upper_bounds = self.get_bounds()
-            guess = self.get_initial_guess()
+        tic()  # start the timer
+        for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
+            lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds for the fit
+            guess = self.get_initial_guess()  # get an initial guess within the specified bounds
+            # minimize the SSE within the specified bounds using nelder mead
             results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
                                method='Nelder-Mead', options={'maxiter': maxiter,
                                                                   'maxfev': maxiter,
                                                                   'xatol': 1e-60,
                                                                   'fatol': 1e-60})
-            data.append([results.x, results.fun])
-        data = array(data, dtype='object')
-        best_fit = data[argmin(data[:, 1])]
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}
+            data.append([results.x, results.fun])  # save the final parameters and final cost
+        data = array(data, dtype='object')  # convert the global data to a numpy array for easier analysis
+        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the data from the best fit
 
     def fit_slow(self, maxiter=1000, num_attempts=5):
         '''
@@ -674,40 +725,53 @@ class LR_PowerLaw():
                        time, (float of time taken to generate best fit)}
         '''
         data = []  # store the global data for the fits
-        tic()
-        for fit_attempt in range(num_attempts):
-            lower_bounds, upper_bounds = self.get_bounds()
-            bound = array((lower_bounds, upper_bounds)).T
-            guess = self.get_initial_guess()
+        tic()  # start the timer
+        for fit_attempt in range(num_attempts):  # perform a specified number of fits
+            lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds
+            bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
+            guess = self.get_initial_guess()  # get an initial guess within the current bounds
+            # minimize the SSE within the specified bounds using dual annealing with nelder mead local search
             results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
                                      local_search_options={'method': 'nelder-mead'}, x0=guess)
-            data.append([results.x, results.fun])
-        data = array(data, dtype='object')
-        best_fit = data[argmin(data[:, 1])]
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}
+            data.append([results.x, results.fun])  # save the final parameters and the cost
+        data = array(data, dtype='object')  # format the trial data as a numpy array for convenient analysis
+        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the best fit data
 
 
-class Custom_Model():
+class customModel():
     def __init__(self, forces, times, indentations, radii):
-        # if there are multiple inputs, then they must all be single arrays
+        # if there are multiple inputs, then they must all be single row vectors
         if type(forces) is list:
-            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):  # check to make sure that the experimental data is all the same size
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
-            self.force = concatenate(forces)
-            self.time = concatenate(times)
-            self.indentation = concatenate(indentations)
+            self.force = concatenate(forces)  # put the forces into a single row vector
+            self.time = concatenate(times)  # do the same for time
+            self.indentation = concatenate(indentations)  # and indentation
+            # make row vectors containing the radius and dt values for each experiment
             self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
             self.dts = concatenate([(t[1] - t[0]) * ones(t.shape) for t in times])
-        else:
+        else:  # if only a single experimental trial is given, store all the values as vectors
             self.force = forces
             self.time = times
             self.indentation = indentations
             self.radii = radii * ones(forces.shape)
             self.dts = (times[1] - times[0]) * ones(forces.shape)
-        self.observable_function = None
+        self.observable_function = None  # the custom function being fit - initially is undefined until the fit takes place
+        self.target_observable = None  # the 'training data' for the function being fit - will also be defined once the fit takes place
 
-    def SSE(self, model_params, upper_bounds, lower_bounds):
+    def SSE(self, model_params, lower_bounds, upper_bounds):
+        '''
+        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (h^3/2)
+        :param model_params: numpy array of retardance parameters (refer to LR_force)
+        :param lower_bounds: numpy array result of a single get_bounds[0] function call (lower bounds)
+        :param upper_bounds: numpy array result of a single get_bounds[1] function call (upper bounds)
+        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (h^3/2)
+        '''
+        # calculate the sum of squared errors between the current prediction of the target observable and the real target observable
+        # sse = sum_ti_tf( ( Custom_Function_Prediction( ti ) - Real( ti ) )^2 )
         sse = sum((self.observable_function(model_params) - self.target_observable) ** 2, axis=0)
+        # if any of the parameters are outside of the specified bounds, return an sse that is scaled to an arbitrarily high degree
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
         return sse
@@ -791,6 +855,10 @@ class Custom_Model():
         best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
+#@TODO change names
+#@TODO make how-to-guide
 #@TODO suppress warnings
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader
+#@TODO make the map reader and add it to the how-to-guide
+#@TODO add public package requirements and get a license

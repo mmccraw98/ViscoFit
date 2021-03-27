@@ -666,74 +666,126 @@ class LR_PowerLaw():
 
 
 class Custom_Model():
-    def __init__(self, forces, times, indentations, radii):
+    def __init__(self, forces, times, indentations, radii, target_observable):
         # if there are multiple inputs
         if type(forces) is list:
             # check for any size mismatches
-            if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
-                exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
+            if any([len(arr) != len(forces) for arr in (times, indentations, radii, target_observable)]):
+                exit(
+                    'Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             # concatenate the lists of experimental observables to put them into a single row vector form
-            self.force = concatenate(forces)
-            self.time = concatenate(times)
-            self.indentation = concatenate(indentations)
-            # create a 'mask' of dt to properly integrate each experiment
-            self.dts = concatenate([dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)])
-            # create a 'mask' of radii to scale each experiment
-            self.radii = concatenate([radius * ones(arr.shape) for radius, arr in zip(radii, forces)])
-        # if there are single inputs
-        else:
             self.force = forces
             self.time = times
             self.indentation = indentations
+            # create a 'mask' of dt to properly integrate each experiment
+            self.dts = [dt * ones(arr.shape) for dt, arr in zip([t[1] - t[0] for t in times], times)]
+            # create a 'mask' of radii to scale each experiment
+            self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
+            self.target_observable = concatenate(target_observable)
+        # if there are single inputs
+        else:
+            self.force = [forces]
+            self.time = [times]
+            self.indentation = [indentations]
             # dt is a single value rather than a 'mask' array as seen above
-            self.dts = self.time[1] - self.time[0]
+            self.dts = [times[1] - times[0]]
             # radius is a single value rather than a 'mask' array as seen above
             self.radii = radii
-        # defining the currently empty target observable and the observable function
-        self.target_observable = None
+            self.target_observable = target_observable
         self.observable_function = None
 
-    def SSE(self, params):
-        return sum((self.observable_function(params) - self.target_observable) ** 2, axis=0)
+    def SSE(self, model_params, upper_bounds, lower_bounds):
+        sse = sum((self.observable_function(model_params) - self.target_observable) ** 2, axis=0)
+        if any(lower_bounds > model_params) or any(upper_bounds < model_params):
+            return 1e20 * sse
+        return sse
 
-    def fit(self, maxiter=1000):
+    def SSE(self, model_params):
+        return sum((self.observable_function(model_params) - self.target_observable) ** 2, axis=0)
+
+    def fit(self, bounds, maxiter=1000, num_attempts=5):
         '''
         fit experimental observable of your choice to a custom model for the observable using a nelder-mead simplex which typically gives good fits rather quickly
+        :param function: function for the desired observable to be predicted
+        :param bounds: (n, 2) numpy array of upper and lower bounds: [[lower1, upper1], ... [lowerN, upperN]]
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
+        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
+        will take longer
         :return: dict {best_fit, (numpy array of final best fit params),
                        final_cost, (float of final cost for the best fit params),
                        time, (float of time taken to generate best fit)}
         '''
-        data = []
+        if self.observable_function is None:
+            exit('Error: the model\'s observable_function argument is undefined!  define by setting model.observable_function = func')
+        data = []  # store the global data for the fits
         tic()
-        results = minimize(self.SSE, method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                    'maxfev': maxiter,
-                                                                    'xatol': 1e-60,
-                                                                    'fatol': 1e-60})
-        data.append([results.x, results.fun, toc(True)])
-
-        data = array(data)
+        lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]
+        for fit_attempt in range(num_attempts):
+            guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]
+            results = minimize(self.observable_function, x0=guess, args=(lower_bounds, upper_bounds),
+                               method='Nelder-Mead', options={'maxiter': maxiter,
+                                                              'maxfev': maxiter,
+                                                              'xatol': 1e-60,
+                                                              'fatol': 1e-60})
+            data.append([results.x, results.fun])
+        data = array(data, dtype='object')
         best_fit = data[argmin(data[:, 1])]
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}
 
-    def fit_slow(self, maxiter=1000):
+    def fit(self, guess, maxiter=1000, num_attempts=5):
+        '''
+        fit experimental observable of your choice to a custom model for the observable using a nelder-mead simplex which typically gives good fits rather quickly
+        :param function: function for the desired observable to be predicted
+        :param bounds: (n, 2) numpy array of upper and lower bounds: [[lower1, upper1], ... [lowerN, upperN]]
+        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
+        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
+        will take longer
+        :return: dict {best_fit, (numpy array of final best fit params),
+                       final_cost, (float of final cost for the best fit params),
+                       time, (float of time taken to generate best fit)}
+        '''
+        if self.observable_function is None:
+            exit('Error: the model\'s observable_function argument is undefined!  define by setting model.observable_function = func')
+        data = []  # store the global data for the fits
+        tic()
+        for fit_attempt in range(num_attempts):
+            results = minimize(self.observable_function, x0=guess,
+                               method='Nelder-Mead', options={'maxiter': maxiter,
+                                                              'maxfev': maxiter,
+                                                              'xatol': 1e-60,
+                                                              'fatol': 1e-60})
+            data.append([results.x, results.fun])
+        data = array(data, dtype='object')
+        best_fit = data[argmin(data[:, 1])]
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}
+
+    def fit_slow(self, bounds, maxiter=1000, num_attempts=5):
         '''
         fit experimental observable of your choice to a custom model for the observable using simulated annealing with
         a nelder-mead simplex local search, this is very computationally costly and will take a very long time
         though typically results in much better fits
+        :param function: function for the desired observable to be predicted
+        :param bounds: (n, 2) numpy array of upper and lower bounds: [[lower1, upper1], ... [lowerN, upperN]]
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
+        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
+        will take longer
         :return: dict {best_fit, (numpy array of final best fit params),
                        final_cost, (float of final cost for the best fit params),
                        time, (float of time taken to generate best fit)}
         '''
-        data = []
+        if self.observable_function is None:
+            exit('Error: the model\'s observable_function argument is undefined!  define by setting model.observable_function = func')
+        data = []  # store the global data for the fits
         tic()
-        results = dual_annealing(self.SSE, maxiter=maxiter, local_search_options={'method': 'nelder-mead'})
-        data.append([results.x, results.fun, toc(True)])
-
-        data = array(data)
+        lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]
+        for fit_attempt in range(num_attempts):
+            guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]
+            results = dual_annealing(self.observable_function, bounds, args=(lower_bounds, upper_bounds), maxiter=maxiter,
+                                     local_search_options={'method': 'nelder-mead'}, x0=guess)
+            data.append([results.x, results.fun])
+        data = array(data, dtype='object')
         best_fit = data[argmin(data[:, 1])]
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2]}
+        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}
 
 #@TODO suppress warnings
 #@TODO add conical and flat punch indenter options

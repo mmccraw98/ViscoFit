@@ -11,14 +11,24 @@ function [out] = LR_Voigt(params,time,dt,force,radius,varargin)
 % Check the varargin
 nu = 0.5; % Default poisson's ratio of the sample to incompressible (0.5)
 tipGeom = "spherical";
+elasticSetting = 1;
+fluidSetting = 0;
 if ~isempty(varargin)
-    for i = 1:length(varargin)
-        switch(i)
-            case 1
-                nu = cell2mat(varargin{i});
-            case 2
-                tipGeom = string(varargin{i});
+    if length(varargin) > 1
+        for i = 1:length(varargin)
+            switch(i)
+                case 1
+                    nu = varargin{i};
+                case 2
+                    tipGeom = varargin{i};
+                case 3
+                    elasticSetting = varargin{i};
+                case 4
+                    fluidSetting = varargin{i};
+            end
         end
+    else
+        nu = varargin;
     end
 end
 
@@ -30,11 +40,13 @@ switch tipGeom
         c = 1./(4*tan(tipSize));
 end
 
+% Make our Dirac Delta array for the elastic term
+diracArray = zeros(size(time));
+diracArray(time-dt<2*eps) = 1;
+
 if length(params) > 1
     % Make our time matrix (for all the arms)
     time_mat = row2mat(time,length(params(3:2:end)));
-    dirac = zeros(size(time));
-    dirac(time-dt==0) = 1;
 
     % Calculate the amount of relaxation that occurs for all arms in time. This
     % quantity in time will be removed from the initial modulus response, Eg
@@ -42,22 +54,29 @@ if length(params) > 1
 
     % Add the initial compliance, Jg, such that it is increased to Je as time
     % stretches toward infinity
-    if params(2) > 2*eps
+    if fluidSetting
         % Steady-state fluidity is added to the Retardance
-        U = params(1).*(dirac./dt) + U_arms + params(2);
+        U = params(1).*(diracArray./dt) + U_arms + params(2);
     else
-        U = params(1).*(dirac./dt) + U_arms;
+        U = params(1).*(diracArray./dt) + U_arms;
     end
 else
-    U = params(1).*(dirac./dt);
+    U = params(1).*(diracArray./dt);
 end
 
 % Calculate the action integral quantity
-out = c.*convnfft(force,U,'full').*dt;
+convData = [];
+startInd = find(diracArray);
+endInd = horzcat(find(diracArray)-1,numel(diracArray));
+endInd(1) = [];
+for i = 1:length(startInd)
+    temp = convnfft(force(startInd(i):endInd(i)),U(startInd(i):endInd(i)),'full');
+    convData = horzcat(convData, temp(1:(1+endInd(i)-startInd(i))));
+end
 
 % Trim the dataset to the region of interest, since the convolution gives
 % an array that is length(force)+length(Q)+1, which is twice as long as our
 % time array.
-out = out(1:length(time));
+out = c.*convData.*dt;
 
 end

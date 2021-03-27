@@ -87,9 +87,9 @@ classdef ViscoFit
             
             % Handle optional arguments. Create default values, and modify
             % if the varargin contains the designated "real" values.
-            obj.nu = cell(size(forces));
-            obj.nu(:) = 0.5;
-            temp = cellfun(@(nu,t) nu.*ones(size(t)),obj.nu,times,'UniformOutput',false);
+            tempnu = cell(size(forces));
+            tempnu(:) = {0.5};
+            temp = cellfun(@(nu,t) nu.*ones(size(t)),tempnu,times,'UniformOutput',false);
             obj.nu = horzcat(temp{:});
             obj.tipGeom = "spherical";
             if ~isempty(varargin)
@@ -107,14 +107,14 @@ classdef ViscoFit
             end
         end
         
-        function sse = SSE_Maxwell(obj,params)
+        function sse = SSE_Maxwell(obj,params,elasticSetting,fluidSetting)
             %SSE_Maxwell Calculate the SSE for the Maxwell model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Maxwell Model according to the Lee and Radok indentation
             %   configuration, given a set of input parameters (params).
             
             % Calculate test forces
-            test_forces = LR_Maxwell(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom);
+            test_forces = LR_Maxwell(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
             
             % calculate global residual
             sse_global = sum((obj.forces-test_forces).^2);
@@ -131,9 +131,11 @@ classdef ViscoFit
             ub(tauInds) = tauCenters*10;
             lb(tauInds) = tauCenters/10;
             
-            if params(2) > 2*eps
-                ub(2) = max(tauCenters)*1e2;
-                lb(2) = min(obj.dts);
+            if length(params) > 1
+                if fluidSetting
+                    ub(2) = max(tauCenters)*1e2;
+                    lb(2) = min(obj.dts);
+                end
             end
             
             if any(ub-params < 0) || any(params-lb < 0)
@@ -141,14 +143,14 @@ classdef ViscoFit
             end
         end % End Maxwell SSE Function
         
-        function sse = SSE_Voigt(obj,params)
+        function sse = SSE_Voigt(obj,params,elasticSetting,fluidSetting)
             %SSE_Voigt Calculate the SSE for the Voigt model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Voigt Model according to the Lee and Radok indentation
             %   configuration, given a set of input parameters (params).
             
             % Calculate test indentation
-            test_indentations = LR_Voigt(params,obj.times,obj.dts,obj.forces,obj.tipSize,obj.nu,obj.tipGeom);
+            test_indentations = LR_Voigt(params,obj.times,obj.dts,obj.forces,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
             
             switch obj.tipGeom
                 case "spherical"
@@ -158,7 +160,7 @@ classdef ViscoFit
             end
             
             % calculate global residual
-            sse_global = sum(((obj.indentation.^beta)-test_indentations).^2);
+            sse_global = sum(((obj.indentations.^beta)-test_indentations).^2);
             sse = sum(sse_global);
             
             [tauInds,modulusInds] = getParamIndices(params);
@@ -171,10 +173,12 @@ classdef ViscoFit
             tauCenters = obj.minTimescale.*(10.^( (1:length(params(3:2:end)))-1 ));
             ub(tauInds) = tauCenters*10;
             lb(tauInds) = tauCenters/10;
-            
-            if params(2) > 2*eps
-                ub(2) = 1;
-                lb(2) = 0;
+
+            if length(params) > 1
+                if fluidSetting
+                    ub(2) = 1;
+                    lb(2) = 0;
+                end
             end
             
             if any(ub-params < 0) || any(params-lb < 0)
@@ -182,7 +186,7 @@ classdef ViscoFit
             end
         end % End Voigt SSE Function
         
-        function sse = SSE_PLR(obj,params)
+        function sse = SSE_PLR(obj,params,varargin)
             %SSE_Maxwell Calculate the SSE for the Maxwell model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Maxwell Model according to the Lee and Radok indentation
@@ -197,15 +201,15 @@ classdef ViscoFit
             
             % Power Law Rheology Roster:
             % [E_0 alpha]
-            ub = [1e12 1];
-            lb = [1e-2 0];
+            ub = [1e12;1];
+            lb = [1e-2;0];
             
-            if any(ub-params < 0) || any(params-lb < 0)
+            if any(ub(1:length(params))-params < 0) || any(params-lb(1:length(params)) < 0)
                 sse = Inf;
             end
         end % End PLR SSE Function
         
-        function fitStruct = fit(obj, varargin)
+        function fitStruct = fitData(obj, varargin)
             % FIT Fit a Viscoelastic Model to the Class Data 
             %   This function takes in a variety of settings in addition to
             %   the data already provided to the class and performs an
@@ -234,24 +238,23 @@ classdef ViscoFit
             n_iterations = 100;         % Use 100 random initializations
             n_fitIterations = 1e4;      % No. of iterations for solver
             if ~isempty(varargin)
-                for i=1:length(varargin)
-                    switch(i)
-                        case 1
-                            solver = char(varargin{i});
-                        case 2
-                            model = char(varargin{i});
-                        case 3
-                            n_elements = cell2mat(varargin{i});
-                        case 4
-                            elasticSetting = cell2mat(varargin{i});
-                        case 5
-                            fluidSetting = cell2mat(varargin{i});
-                        case 6
-                            n_iterations = cell2mat(varargin{i});
-                        case 7
-                            n_fitIterations = cell2mat(varargin{i});
-                        case 8
-                            customFunc = varargin{i};
+                % Only one varargin is accepted, and it is a structure
+                % containing all of the settings information we require
+                fitOpts = varargin{1};
+                
+                % Get the settings provided
+                solver = lower(fitOpts.solver);
+                model = lower(fitOpts.model);
+                n_elements = fitOpts.n_elements;
+                elasticSetting = fitOpts.elasticSetting;
+                fluidSetting = fitOpts.fluidSetting;
+                n_iterations = fitOpts.n_iterations;
+                n_fitIterations = fitOpts.n_fitIterations;
+                if strcmpi(solver,'custom')
+                    if isfield(fitOpts,'customFunc')
+                        customFunc = fitOpts.customFunc;
+                    else
+                        error('You selected "custom" for the solver type and did not supply the function name in the class settings.');
                     end
                 end
             end
@@ -267,13 +270,24 @@ classdef ViscoFit
             % Get the correct objective function for optimization
             switch model
                 case 'maxwell'
-                    objFunc = @SSE_Maxwell;
+                    objFunc = @obj.SSE_Maxwell;
+                    modelFile = 'LR_Maxwell.m';
                 case 'voigt'
-                    objFunc = @SSE_Voigt;
-                case 'PLR'
-                    objFunc = @SSE_PLR;
+                    objFunc = @obj.SSE_Voigt;
+                    modelFile = 'LR_Voigt.m';
+                case 'plr'
+                    objFunc = @obj.SSE_PLR;
+                    modelFile = 'LR_PLR.m';
+                    % The storage roster for plr is different, and requires
+                    % the second index to maintain consistency. Thus, we
+                    % have to manually force the second term to be fit by
+                    % including the fluidity. This second position actually
+                    % corresponds to the exponent, alpha.
+                    fluidSetting = 1;
+                    fitStruct.fluidSetting = fluidSetting;
                 case 'custom'
-                    objFunc = @customFunc;
+                    objFunc = @obj.customFunc;
+                    modelFile = 'customFunc.m';
                 otherwise
                     error('Your chosen solver-model combination is not implemented yet.');
             end
@@ -286,6 +300,22 @@ classdef ViscoFit
             fitStruct.elasticFitTime = [];
             fitStruct.fitTime = {};
             
+            % Open Parallel Pool of MATLAB Workers
+            if isempty(gcp('nocreate'))
+                % Make a fresh pool
+                poolobj = parpool('IdleTimeout', Inf);
+            else
+                % Remove the old pool
+                poolobj = gcp('nocreate');
+                delete(poolobj);
+                
+                % Make a fresh pool
+                poolobj = parpool('IdleTimeout', Inf);
+            end
+            
+            % Send the class to the workers
+            addAttachedFiles(poolobj, {'ViscoFit.m',modelFile})
+
             % Start the timer
             tic;
             
@@ -312,15 +342,19 @@ classdef ViscoFit
                     % elasticSetting and fluidSetting provided to this
                     % function, the values in (1) and (2) may never be
                     % updated
-                    beta_in = NaN(4,1);
+                    if strcmpi(model,'plr')
+                        beta_in = NaN(2,1);
+                    else
+                        beta_in = NaN(4,1);
+                    end
                 end
                 
                 % Make our storage variables
                 beta_dist = zeros(length(beta_in),n_iterations);
-                beta_dist_elastic = zeros(1,size(beta_dist));
+                beta_dist_elastic = zeros(1,n_iterations);
                 beta0_dist = zeros(size(beta_dist));
-                residual_dist = NaN(size(beta_dist));
-                residual_dist_elastic = NaN(size(beta_dist_elastic));
+                residual_dist = NaN(1,n_iterations);
+                residual_dist_elastic = NaN(size(residual_dist));
                 
                 % Make the upper and lower bounds for this model
                 [tauInds,modulusInds] = getParamIndices(beta_in);
@@ -349,10 +383,10 @@ classdef ViscoFit
                         
                         % Restrict the range of random guesses, if desired.
                         % Otherwise, they should be set equal to ub & lb
-                        ub_rand(modulusInds) = 10^(6);
-                        ub_rand(tauInds) = ub(tauInds);
-                        lb_rand(modulusInds) = 10^(1);
-                        lb_rand(tauInds) = lb(tauInds);
+                        ub_rand(modulusInds) = 6;
+                        ub_rand(tauInds) = log10(ub(tauInds));
+                        lb_rand(modulusInds) = 1;
+                        lb_rand(tauInds) = log10(lb(tauInds));
                         
                     case 'voigt'
                         % Compliances are limited to "reasonable" bounds
@@ -376,12 +410,12 @@ classdef ViscoFit
 
                         % Restrict the range of random guesses, if desired.
                         % Otherwise, they should be set equal to ub & lb
-                        ub_rand(modulusInds) = 10^(-1);
-                        ub_rand(tauInds) = ub(tauInds);
-                        lb_rand(modulusInds) = 10^(-6);
-                        lb_rand(tauInds) = lb(tauInds);
+                        ub_rand(modulusInds) = -1;
+                        ub_rand(tauInds) = log10(ub(tauInds));
+                        lb_rand(modulusInds) = -6;
+                        lb_rand(tauInds) = log10(lb(tauInds));
                         
-                    case 'PLR'
+                    case 'plr'
                         % Power Law Rheology Roster:
                         % [E_0 alpha]
                         ub = [1e12 1];
@@ -389,8 +423,8 @@ classdef ViscoFit
                         
                         % Restrict the range of random guesses, if desired.
                         % Otherwise, they should be set equal to ub & lb
-                        ub_rand = ub;
-                        lb_rand = lb;
+                        ub_rand = log10(ub);
+                        lb_rand = [log10(lb(1)) -3];
                         
                     case 'custom'
                         
@@ -424,12 +458,12 @@ classdef ViscoFit
                             preElasticTime = toc;
                             
                             progressString = sprintf('Nelder-Mead (%s)\nInvestigating Elastic Parameter\nParallel Search Running...',model);
-                            hbar = parfor_progressbar(loopLim,progressString);
+                            hbar = parfor_progressbar(n_iterations,progressString);
                             warning('off');
-                            parfor j = 1:n_samples
+                            parfor j = 1:n_iterations
                                 % Get the grid search starting position
-                                beta0 = getfield(logspace(ub(1),lb(1),n_samples),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x),beta0,options);
+                                beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,options);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -450,13 +484,13 @@ classdef ViscoFit
                         newInds = isnan(beta_in);
                         
                         progressString = sprintf('Nelder-Mead (%s)\nInvestigating Material Parameters\nParallel Search Running...',model);
-                        hbar = parfor_progressbar(loopLim,progressString);
+                        hbar = parfor_progressbar(n_iterations,progressString);
                         warning('off');
-                        parfor j = 1:n_samples
+                        parfor j = 1:n_iterations
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = fminsearch(@(x)objFunc(x),beta0,options);
+                            [beta_dist(:,j),residual_dist(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,options);
                             hbar.iterate(1);
                         end
                         close(hbar);
@@ -477,8 +511,8 @@ classdef ViscoFit
                                         'InitTemp',1,...
                                         'MaxConsRej',1000,...
                                         'MaxSuccess',20,...
-                                        'MaxTries',n_fitIterations,...
-                                        'StopTemp',scaling,...
+                                        'MaxTries',300,...
+                                        'StopTemp',1e-8,...
                                         'StopVal',-Inf,...
                                         'Verbosity',0);
                         
@@ -492,12 +526,12 @@ classdef ViscoFit
                             preElasticTime = toc;
                             
                             progressString = sprintf('Simulated Annealing (%s)\nInvestigating Elastic Parameter\nParallel Search Running...',model);
-                            hbar = parfor_progressbar(loopLim,progressString);
+                            hbar = parfor_progressbar(n_iterations,progressString);
                             warning('off');
-                            parfor j = 1:n_samples
+                            parfor j = 1:n_iterations
                                 % Get the grid search starting position
-                                beta0 = getfield(logspace(ub(1),lb(1),n_samples),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x),beta0,nelderopts);
+                                beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,nelderopts);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -518,13 +552,13 @@ classdef ViscoFit
                         newInds = isnan(beta_in);
                         
                         progressString = sprintf('Simulated Annealing (%s)\nInvestigating Material Parameters\nParallel Search Running...',model);
-                        hbar = parfor_progressbar(loopLim,progressString);
+                        hbar = parfor_progressbar(n_iterations,progressString);
                         warning('off');
-                        parfor j = 1:n_samples
+                        parfor j = 1:n_iterations
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = annealOpt(@(x)objFunc(x),beta0,annealopts,nelderopts);
+                            [beta_dist(:,j),residual_dist(j)] = annealOpt(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,annealopts,nelderopts);
                             hbar.iterate(1);
                         end
                         close(hbar);
@@ -550,12 +584,12 @@ classdef ViscoFit
                             preElasticTime = toc;
                             
                             progressString = sprintf('Nonlinear Least-Squares (%s)\nInvestigating Elastic Parameter\nParallel Search Running...',model);
-                            hbar = parfor_progressbar(loopLim,progressString);
+                            hbar = parfor_progressbar(n_iterations,progressString);
                             warning('off');
-                            parfor j = 1:n_samples
+                            parfor j = 1:n_iterations
                                 % Get the grid search starting position
-                                beta0 = getfield(logspace(ub(1),lb(1),n_samples),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fmincon(objFunc,beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
+                                beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -576,13 +610,13 @@ classdef ViscoFit
                         newInds = isnan(beta_in);
                         
                         progressString = sprintf('Nonlinear Least-Squares (%s)\nInvestigating Material Parameters\nParallel Search Running...',model);
-                        hbar = parfor_progressbar(loopLim,progressString);
+                        hbar = parfor_progressbar(n_iterations,progressString);
                         warning('off');
-                        parfor j = 1:n_samples
+                        parfor j = 1:n_iterations
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = fmincon(objFunc,beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
+                            [beta_dist(:,j),residual_dist(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
                             hbar.iterate(1);
                         end
                         close(hbar);
@@ -595,10 +629,13 @@ classdef ViscoFit
                 
                 % Find the best-fit parameters from our population
                 [~,idx] = min(residual_dist,[],'omitnan');
+                if size(idx,2)>1 idx = (idx(1)); end
                 
                 % Store the best-fit parameters to be fed forward, and also
                 % save the "less optimal" sets for statistical treatment
                 % later
+                fprintf('Optimal Parameters, Iteration %d:\n',i)
+                disp(beta_dist(:,idx));
                 fitStruct.bestParams = horzcat(fitStruct.bestParams,{beta_dist(:,idx)});
                 fitStruct.paramPopulation = horzcat(fitStruct.paramPopulation,{beta_dist});
                 fitStruct.paramPopulationResiduals = horzcat(fitStruct.paramPopulationResiduals,{residual_dist});
@@ -606,7 +643,7 @@ classdef ViscoFit
                 % Store the timing for this model configuration fit
                 fitStruct.fitTime = horzcat(fitStruct.fitTime,{postFitting-preFitting});
                 
-                if any(strcmp(model,'PLR'))
+                if any(strcmp(model,'plr'))
                     % The PLR model does not utilize more than a single
                     % term, so "iterative term introduction" has no
                     % meaning in this case. As such, the remaining
@@ -625,6 +662,8 @@ classdef ViscoFit
                 end
                 
             end % End Iterative Term Introduction Loop
+            
+            delete(poolobj);
             
         end % End Fit()
         

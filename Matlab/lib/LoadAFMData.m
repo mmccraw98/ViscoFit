@@ -164,12 +164,16 @@ for k = 1:length(Files)
             dataStruct(k).z = RawData.y(:,1);
             dataStruct(k).d = RawData.y(:,2);
             
+            dataStruct(k).r_tip = input(sprintf('Please enter the tip radius used for the file "%s": ',Files(k).name));
+            dataStruct(k).nu_sample = input(sprintf('Please enter the sample Poissons Ratio (nu) for file "%s": ',Files(k).name));
+            
             % Find Spring Constant
             varIndex = find(contains(headerValue,'SpringConstant'),1);
             temp = headerValue{varIndex};
             temp(isspace(temp)) = [];
             temp = split(temp,':');
             k_cantilever(k) = str2num(temp{2}); % Value in N/m
+            dataStruct(k).k_cantilever = k_cantilever(k);
             
             % Find Deflection InvOLS
             varIndex = find(contains(headerValue,'InvOLS'));
@@ -221,6 +225,9 @@ for k = 1:length(Files)
             dataStruct(k).n_sam = numel(dataStruct(k).t);
             
             k_cantilever(k) = settingsData.settingsStruct.k_m1;
+            dataStruct(k).k_cantilever = k_cantilever(k);
+            dataStruct(k).r_tip = settingsData.settingsStruct.r_tip;
+            dataStruct(k).nu_sample = settingsData.settingsStruct.nu_sample;
             dataStruct(k).d = RawData.F./k_cantilever(k);
             defl_InVOLS(k) = 1;
             dataStruct(k).dt = settingsData.settingsStruct.dt;
@@ -445,6 +452,8 @@ clearvars k point_number_temp run_number_temp
 % Determine how many load levels we are considering
 v_approach = round(v_approach,2,'significant');
 v_unique = (unique(v_approach));
+r_tip_array = zeros(size(v_unique));
+nu_sample_array = zeros(size(v_unique));
 
 if length(Files) > 1
     N = length(Files);
@@ -470,6 +479,9 @@ if length(Files) > 1
         currentFile = [];
         forceLimits = [];
         timeLimits = [];
+        
+        r_tip_array(1) = mode(cell2mat({dataStruct(1:length(Files)).r_tip}));
+        nu_sample_array(1) = mode(cell2mat({dataStruct(1:length(Files)).nu_sample}));
         
         % When only one velocity is present
         for k=1:length(Files)
@@ -564,9 +576,13 @@ if length(Files) > 1
             forceLimits = [];
             timeLimits = [];
             
+            r_tip_array(j) = mode(cell2mat({dataStruct(v_approach(:) == v_unique(j)).r_tip}));
+            nu_sample_array(j) = mode(cell2mat({dataStruct(v_approach(:) == v_unique(j)).nu_sample}));
+            
             if sum(v_approach(:) == v_unique(j)) > 1
                 % Loop through all files
                 for k=1:length(Files)
+                    % Grab the tip radius for this velocity and 
 
                     % Check if this file is relevant for this specific
                     % averaging operation
@@ -685,6 +701,10 @@ end
 
 % Pre-Processing for Averaged Data of all load levels.
 for i = 1:length(v_unique)
+    
+    % Store the tip radius in this row for reference later
+    dataStruct(length(Files)+i).r_tip = r_tip_array(i);
+    dataStruct(length(Files)+i).nu_sample = nu_sample_array(i);
     
     % Find the approach portion of the data. This is only really necessary
     % if the average data happens to go past the limit of all the datasets

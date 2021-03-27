@@ -12,13 +12,17 @@ function [out] = LR_PLR(params,time,dt,indentation,tipSize,varargin)
 nu = 0.5; % Default poisson's ratio of the sample to incompressible (0.5)
 tipGeom = "spherical";
 if ~isempty(varargin)
-    for i = 1:length(varargin)
-        switch(i)
-            case 1
-                nu = cell2mat(varargin{i});
-            case 2
-                tipGeom = string(varargin{i});
+    if length(varargin) > 1
+        for i = 1:length(varargin)
+            switch(i)
+                case 1
+                    nu = varargin{i};
+                case 2
+                    tipGeom = varargin{i};
+            end
         end
+    else
+        nu = varargin;
     end
 end
 
@@ -32,18 +36,33 @@ switch tipGeom
         beta = 2;
 end
 
+% Make our Dirac Delta array for the convolution portion
+diracArray = zeros(size(time));
+diracArray(time-dt<2*eps) = 1;
+
 % Set t' equal to dt, per Efremov (2017)
 t_prime = dt;
 
 % Calculate Power Law Rheology Modulus
-E = params(1).( (1 + time./t_prime) .^ (-params(2)) );
+if length(params) > 1
+    E = params(1).*( (1 + time./t_prime) .^ (-params(2)) );
+else
+    E = params(1).*diracArray./dt;
+end
 
 % Calculate the action integral quantity
-out = c.*convnfft(gradient(indentation.^(beta)),E,'full').*dt;
+convData = [];
+startInd = find(diracArray);
+endInd = horzcat(find(diracArray)-1,numel(diracArray));
+endInd(1) = [];
+for i = 1:length(startInd)
+    temp = convnfft(gradient(indentation(startInd(i):endInd(i)).^(beta)),E(startInd(i):endInd(i)),'full');
+    convData = horzcat(convData, temp(1:(1+endInd(i)-startInd(i))));
+end
 
 % Trim the dataset to the region of interest, since the convolution gives
 % an array that is length(indentation)+length(Q)+1, which is twice as long
 % as our time array.
-out = out(1:length(time));
+out = c.*convData.*dt;
 
 end

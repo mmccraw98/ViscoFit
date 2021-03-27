@@ -35,8 +35,8 @@ function [beta0] = makeRandomParams(oldParams,ub_randLimit,lb_randLimit,elasticS
 
     beta0_temp = zeros(size(ub_randLimit));
     beta0_temp([1 2]) = 10.^(((ub_randLimit([1 2])-lb_randLimit([1 2])).*rand(1,2)+lb_randLimit([1 2])));
-    beta0_temp(3:2:end) = 10.^(((ub_randLimit(3:2:end)-lb_randLimit(3:2:end)).*rand(size(ub_randLimit(3:2:end)))+lb_randLimit(3:2:end)));
-    beta0_temp(4:2:end) = ((ub_randLimit(4:2:end)-lb_randLimit(4:2:end)).*rand(size(ub_randLimit(4:2:end))) + lb_randLimit(4:2:end));
+    beta0_temp(3:2:end) = 10.^(((ub_randLimit(3:2:end)-lb_randLimit(3:2:end)).*rand(size(ub_randLimit(3:2:end))) + lb_randLimit(3:2:end)));
+    beta0_temp(4:2:end) = 10.^((ub_randLimit(4:2:end)-lb_randLimit(4:2:end)).*rand(size(ub_randLimit(4:2:end))) + lb_randLimit(4:2:end));
     
     if ~elasticSetting
         beta0_temp(1) = 0;

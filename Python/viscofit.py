@@ -741,6 +741,13 @@ class powerLawModel():
 
 class customModel():
     def __init__(self, forces, times, indentations, radii):
+        '''
+        initializes an instance of the customModel class used for generating fits, of experimentally obtained force-distance data all belonging to the same sample, to a custom defined rheology model which corresponds to the sample's viscoelastic behavior
+        :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
+        :param times: either list of numpy arrays or single numpy array corresponding to the time signals from an AFM
+        :param indentations: either list of numpy arrays or single numpy array corresponding to the indentation signals from an AFM
+        :param radii: either list of floats or single float corresponding to the tip radii of an AFM
+        '''
         # if there are multiple inputs, then they must all be single row vectors
         if type(forces) is list:
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):  # check to make sure that the experimental data is all the same size
@@ -855,8 +862,6 @@ class customModel():
         best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
-#@TODO change names
-#@TODO make how-to-guide
 #@TODO suppress warnings
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader

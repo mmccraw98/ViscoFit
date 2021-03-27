@@ -1,4 +1,4 @@
-from numpy import array, sum, sqrt, convolve, exp, ones, zeros, tile, insert, concatenate, argmin, diff, var
+from numpy import array, sum, sqrt, convolve, exp, ones, zeros, tile, insert, concatenate, argmin, diff, var, seterr
 from numpy.random import uniform
 from scipy.optimize import minimize, dual_annealing
 from time import time
@@ -114,6 +114,7 @@ class maxwellModel():
         :param E_logbounds: tuple (float, float) high and low log bound for the elastic elements in the model
         :param T_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
+        seterr(divide='ignore', under='ignore', over='ignore')  # ignore div0 and under/overflow warnings in numpy
         # if there are multiple inputs, they need to be treated differently than single inputs
         if type(forces) is list:
             # check for any size mismatches
@@ -351,6 +352,7 @@ class kelvinVoigtModel():
         :param J_logbounds: tuple (float, float) high and low log bound for the compliance elements in the model
         :param T_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
+        seterr(divide='ignore', under='ignore', over='ignore')  # ignore div0 and under/overflow warnings in numpy
         # if there are multiple inputs
         if type(forces) is list:
             # check for any size mismatches
@@ -606,6 +608,7 @@ class powerLawModel():
         :param E0_logbounds: tuple (float, float) high and low log bound for the compliance elements in the model
         :param a_logbounds: tuple (float, float) high and low log bound for the time constants in the model
         '''
+        seterr(divide='ignore', under='ignore', over='ignore')  # ignore div0 and under/overflow warnings in numpy
         # if there are multiple inputs
         if type(forces) is list:
             # check for any size mismatches
@@ -748,6 +751,7 @@ class customModel():
         :param indentations: either list of numpy arrays or single numpy array corresponding to the indentation signals from an AFM
         :param radii: either list of floats or single float corresponding to the tip radii of an AFM
         '''
+        seterr(divide='ignore', under='ignore', over='ignore')  # ignore div0 and under/overflow warnings in numpy
         # if there are multiple inputs, then they must all be single row vectors
         if type(forces) is list:
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):  # check to make sure that the experimental data is all the same size
@@ -862,8 +866,8 @@ class customModel():
         best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
-#@TODO suppress warnings
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader
 #@TODO make the map reader and add it to the how-to-guide
+#@TODO cuda parallelization of map reader?
 #@TODO add public package requirements and get a license

@@ -156,7 +156,7 @@ T = Tinit;
 initenergy = loss(parent);
 oldenergy = initenergy;
 total = 0;
-if report==2, fprintf(1,'\n  T = %7.5f, loss = %10.5f\n',T,oldenergy); end
+if report==2, fprintf(1,'\n  T = %7.5g, loss = %10.5g\n',T,oldenergy); end
 while ~finished
     itry = itry+1; % just an iteration counter
     current = parent; 
@@ -170,7 +170,7 @@ while ~finished
         else
             T = cool(T);  % decrease T according to cooling schedule
             if report==2 % output
-                fprintf(1,'  T = %7.5f, loss = %10.5f\n',T,oldenergy);
+                fprintf(1,'  T = %7.5g, loss = %10.5g\n',T,oldenergy);
             end
             total = total + itry;
             itry = 1;

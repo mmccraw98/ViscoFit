@@ -66,8 +66,17 @@ for i = 1:loopMax
 end
 
 %% Test the Fitting Functions using the Nelder-Mead Solver
+% Make a structure for our settings
+classSettings = struct;
+
+% Test the Maxwell
+classSettings.minTimescale = 1e-4;      % Timescale for the first viscoelastic element
+classSettings.nu = nu;                  % Sample Poisson Ratio for all curves
+classSettings.tipGeom = tipGeom;        % Tip geometry for these experiments
+classSettings.fitLog = 1;               % Log-scale-resample the data before fitting (faster)
+
 % Create the class object
-visco = ViscoFit(forces,times,indentations,tipSize,minTimescale,nu,tipGeom);
+visco = ViscoFit(forces,times,indentations,tipSize,classSettings);
 
 % Make a structure for our settings
 fitSettings = struct;

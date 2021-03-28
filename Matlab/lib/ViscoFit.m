@@ -57,10 +57,11 @@ classdef ViscoFit
         minTimescale double {mustBePositive}
         nu double {mustBePositive}
         nu_cell cell
+        fitLog logical
     end
     
     methods
-        function obj = ViscoFit(forces,times,indentations,tipSize,minTimescale,varargin)
+        function obj = ViscoFit(forces,times,indentations,tipSize,varargin)
             %ViscoFit Construct an instance of the ViscoFit class
             %   This class is utilized to perform the parameter
             %   optimization steps. It helps collect the relevant data for
@@ -78,51 +79,86 @@ classdef ViscoFit
             %   mechanics are changed to account for the tipSize being the
             %   tip angle.
             
-            if nargin >= 5
-                obj.forces = horzcat(forces{:});
-                obj.forces_cell = forces;
+            
+            obj.minTimescale = minTimescale;
+            
+            if nargin >= 4
                 
-                obj.times = horzcat(times{:});
-                obj.times_cell = times;
+                % Handle optional arguments. Create default values, and modify
+                % if the varargin contains the designated "real" values.
+                tempnu = cell(size(forces));
+                tempnu(:) = {0.5}; % Incompressible, 0.5
+                temp = cellfun(@(nu,t) nu.*ones(size(t)),tempnu,times,'UniformOutput',false);
+                obj.nu = horzcat(temp{:});
+                obj.nu_cell = temp;
+                obj.tipGeom = "spherical";
+                obj.fitLog = false;
+                if ~isempty(varargin)
+                    if isa(varargin{1},'struct')
+                        % Grab the settings structure
+                        inputSettings = varargin{1};
+                        
+                        % Store the settings in the class
+                        temp = cellfun(@(nu,t) nu.*ones(size(t)),inputSettings.nu,times,'UniformOutput',false);
+                        obj.nu = horzcat(temp{:});
+                        obj.nu_cell = temp;
+                        obj.tipGeom = string(inputSettings.tipGeom);
+                        obj.fitLog = logical(inputSettings.fitLog);
+                        
+                    else
+                        error('You are not passing the settings correctly to the ViscoFit Class Initialization. Please ensure the fifth argument is a structure containing your settings.');
+                    end
+                    
+                end
                 
-                obj.indentations = horzcat(indentations{:});
-                obj.indentations_cell = indentations;
+                if ~obj.fitLog
+                    % Use the full-fidelity data (no log sampling)
+                    obj.forces = horzcat(forces{:});
+                    obj.forces_cell = forces;
+
+                    obj.times = horzcat(times{:});
+                    obj.times_cell = times;
+
+                    obj.indentations = horzcat(indentations{:});
+                    obj.indentations_cell = indentations;
+
+                    temp = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
+                    obj.dts = horzcat(temp{:});
+                    obj.dts_cell = temp;
+
+                    temp = cellfun(@(r,t) r.*ones(size(t)),tipSize,times,'UniformOutput',false);
+                    obj.tipSize = horzcat(temp{:});
+                    obj.tipSize_cell = temp;
+                else
+                    % Log-sample all of the data before performing any
+                    % operations. Note: this reduces the data quality, but
+                    % drastically improves the fitting speed for legacy
+                    % methods (NLS, in particular).
+                    temp = cellfun(@(x,t,dt)log_scale(x,t,mode(dt),t(end)),forces,times,dt,'UniformOutput',false);
+                    obj.forces = horzcat(temp{:});
+                    obj.forces_cell = temp;
+
+                    temp = cellfun(@(x,t,dt)log_scale(x,t,mode(dt),t(end)),times,times,dt,'UniformOutput',false);
+                    obj.times = horzcat(temp{:});
+                    obj.times_cell = temp;
+
+                    temp = cellfun(@(x,t,dt)log_scale(x,t,mode(dt),t(end)),indentations,times,dt,'UniformOutput',false);
+                    obj.indentations = horzcat(temp{:});
+                    obj.indentations_cell = temp;
+                    
+                    temp = cellfun(@(t,x) mode(gradient(t)).*ones(size(x)),times,obj.times_cell,'UniformOutput',false);
+                    obj.dts = horzcat(temp{:});
+                    obj.dts_cell = temp;
+
+                    temp = cellfun(@(r,t) r.*ones(size(t)),tipSize,obj.times_cell,'UniformOutput',false);
+                    obj.tipSize = horzcat(temp{:});
+                    obj.tipSize_cell = temp;
+                end
                 
-                temp = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
-                obj.dts = horzcat(temp{:});
-                obj.dts_cell = temp;
-                
-                temp = cellfun(@(r,t) r.*ones(size(t)),tipSize,times,'UniformOutput',false);
-                obj.tipSize = horzcat(temp{:});
-                obj.tipSize_cell = temp;
-                
-                obj.minTimescale = minTimescale;
             else
                 error('Not enough data provided to the class definition. Please supply at least the force, time, indentation, and radii.');
             end
             
-            % Handle optional arguments. Create default values, and modify
-            % if the varargin contains the designated "real" values.
-            tempnu = cell(size(forces));
-            tempnu(:) = {0.5}; % Incompressible, 0.5
-            temp = cellfun(@(nu,t) nu.*ones(size(t)),tempnu,times,'UniformOutput',false);
-            obj.nu = horzcat(temp{:});
-            obj.nu_cell = temp;
-            obj.tipGeom = "spherical";
-            if ~isempty(varargin)
-                for i=1:length(varargin)
-                    switch(i)
-                        case 1
-                            temp = cellfun(@(nu,t) nu.*ones(size(t)),varargin{i},times,'UniformOutput',false);
-                            obj.nu = horzcat(temp{:});
-                            obj.nu_cell = temp;
-                        case 2
-                            if ~strcmp(obj.tipGeom, string(varargin{i}))
-                                obj.tipGeom = string(varargin{i});
-                            end
-                    end
-                end
-            end
         end
         
         function sse = SSE_Maxwell(obj,params,elasticSetting,fluidSetting)

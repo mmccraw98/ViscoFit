@@ -10,25 +10,33 @@ function [x_log] = log_scale(x,t,tr,st)
     i = 1;
     j = 1;
     x_log = [];
+    tr_loop = tr;
     
     while i < n_log
         % How many points do we have in this decade?
-        magPoints = (find( floor(log10(t)) == floor(log10(j*tr)) ));
+        magPoints = (find( floor(log10(t)) == floor(log10(j*tr_loop)) ));
         if length(magPoints) < 10
             stepsize = 1;
         else
             stepsize = median( floor( diff( linspace(magPoints(1), magPoints(end), 10) ) ) );
         end
-        
+
         % If you are between the first and last time...
-        if t(i) >= j*tr && t(i) <= st
+        if ((t(i) >= j*tr_loop) || (abs(t(i) - j*tr_loop) < eps)) && t(i) <= st
+            % Note in this logical check that the first true/false
+            % evaluation has to contain logica that checks if we are
+            % basically "in the same bin" (i.e. the second check for the
+            % difference between numbers being less than the machine
+            % error). If you don't check this difference, you can
+            % erroneously skip datapoints that should, indeed, be included
+            % because of machine error.
             
             x_log = [x_log x(i)];
             j = j + 1;
             
             % If you've hit the top of this log range...
             if j == n_logMax
-                tr = tr * 10;
+                tr_loop = tr_loop * 10;
                 j = 1;
             end
         end

@@ -73,7 +73,7 @@ classSettings = struct;
 classSettings.minTimescale = 1e-4;      % Timescale for the first viscoelastic element
 classSettings.nu = nu;                  % Sample Poisson Ratio for all curves
 classSettings.tipGeom = tipGeom;        % Tip geometry for these experiments
-classSettings.fitLog = 1;               % Log-scale-resample the data before fitting (faster)
+classSettings.fitLog = 0;               % Log-scale-resample the data before fitting (faster)
 
 % Create the class object
 visco = ViscoFit(forces,times,indentations,tipSize,classSettings);
@@ -87,8 +87,8 @@ fitSettings.model = 'maxwell';          % Use Generalized Maxwell Model
 fitSettings.n_elements = 3;             % Fit iteratively for up to 4 elements
 fitSettings.elasticSetting = 1;         % Include Elastic Term
 fitSettings.fluidSetting = 0;           % No Steady-State Fluidity
-fitSettings.n_iterations = 500;         % Use 500 random initializations
-fitSettings.n_fitIterations = 1e4;      % No. of iterations for solver
+fitSettings.n_iterations = 200;         % Use 500 random initializations
+fitSettings.n_fitIterations = 5e3;      % No. of iterations for solver
 maxwellFit_NM = visco.fitData(fitSettings);
 
 % Test the Voigt
@@ -108,7 +108,7 @@ PLRFit_NM = visco.fitData(fitSettings);
 % customFit = visco.fitData(fitSettings);
 
 % Check out the results
-dts = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
+dts = cellfun(@(t) round(mode(gradient(t)),1,'significant').*ones(size(t)),times,'UniformOutput',false);
 switch tipGeom
     case "spherical"
         beta = 1.5;
@@ -122,7 +122,7 @@ if exist('resultsFigNelder','var')
     end
     clearvars resultsFigNelder
 end
-resultsFigNelder = figure('Position',[50 200 300*fitSettings.n_elements 600]);
+resultsFigNelder = figure('Position',[50 100 300*fitSettings.n_elements 600]);
 for i = 1:fitSettings.n_elements
     subplot(1,fitSettings.n_elements,i)
     title(sprintf('%d Terms',i))
@@ -130,8 +130,8 @@ for i = 1:fitSettings.n_elements
     for j = 1:size(forces,2)
         scatter(times{j},forces{j},50,'rx')
         scatter(times{j},indentations{j}.^(beta),50,'bo')
-        plot(times{j},LR_Maxwell(maxwellFit_NM.bestParams{j},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-        plot(times{j},LR_Voigt(voigtFit_NM.bestParams{j},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
+        plot(times{j},LR_Maxwell(maxwellFit_NM.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
+        plot(times{j},LR_Voigt(voigtFit_NM.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
         plot(times{j},LR_PLR(PLRFit_NM.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
     end
     grid on
@@ -195,8 +195,8 @@ for i = 1:fitSettings.n_elements
     for j = 1:size(forces,2)
         scatter(times{j},forces{j},50,'rx')
         scatter(times{j},indentations{j}.^(beta),50,'bo')
-        plot(times{j},LR_Maxwell(maxwellFit_Anneal.bestParams{j},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-        plot(times{j},LR_Voigt(voigtFit_Anneal.bestParams{j},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
+        plot(times{j},LR_Maxwell(maxwellFit_Anneal.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
+        plot(times{j},LR_Voigt(voigtFit_Anneal.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
         plot(times{j},LR_PLR(PLRFit_Anneal.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
     end
     grid on
@@ -217,8 +217,8 @@ fitSettings.model = 'maxwell';          % Use Generalized Maxwell Model
 fitSettings.n_elements = 3;             % Fit iteratively for up to 4 elements
 fitSettings.elasticSetting = 1;         % Include Elastic Term
 fitSettings.fluidSetting = 0;           % No Steady-State Fluidity
-fitSettings.n_iterations = 500;         % Use 5 random initializations
-fitSettings.n_fitIterations = 2e4;      % No. of iterations for solver
+fitSettings.n_iterations = 200;         % Use 5 random initializations
+fitSettings.n_fitIterations = 1e4;      % No. of iterations for solver
 maxwellFit_NLS = visco.fitData(fitSettings);
 
 % Test the Voigt
@@ -252,7 +252,7 @@ if exist('resultsFigNLS','var')
     end
     clearvars resultsFigNLS
 end
-resultsFigNLS = figure('Position',[50 200 300*fitSettings.n_elements 600]);
+resultsFigNLS = figure('Position',[50 300 300*fitSettings.n_elements 600]);
 for i = 1:fitSettings.n_elements
     subplot(1,fitSettings.n_elements,i)
     title(sprintf('%d Terms',i))
@@ -260,8 +260,8 @@ for i = 1:fitSettings.n_elements
     for j = 1:size(forces,2)
         scatter(times{j},forces{j},50,'rx')
         scatter(times{j},indentations{j}.^(beta),50,'bo')
-        plot(times{j},LR_Maxwell(maxwellFit_NLS.bestParams{j},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-        plot(times{j},LR_Voigt(voigtFit_NLS.bestParams{j},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
+        plot(times{j},LR_Maxwell(maxwellFit_NLS.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
+        plot(times{j},LR_Voigt(voigtFit_NLS.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
         plot(times{j},LR_PLR(PLRFit_NLS.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
     end
     grid on

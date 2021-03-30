@@ -2,38 +2,7 @@ from numpy import array, sum, sqrt, convolve, exp, ones, zeros, tile, insert, co
 from numpy.random import uniform
 from scipy.optimize import minimize, dual_annealing
 from time import time
-
-
-def row2mat(row, n):
-    '''
-    stacks a row vector (numpy (m, )) n times to create a matrix (numpy (m, n)) NOTE: CAN SLOW DOWN COMPUTATION IF DONE MANY TIMES
-    :param row: numpy array row vector
-    :param n: int number of replications to perform
-    :return: numpy matrix (m, n) replicated row vector
-    '''
-    # do once at the beginning of any calculation to improve performance
-    return tile(row, (n, 1)).T
-
-
-def tic():
-    '''
-    start the clock
-    :return: a global var for the initial time
-    '''
-    global current_time
-    current_time = time()
-
-
-def toc(return_numeric=False):
-    '''
-    stop the clock and return the elapsed time
-    :param return_numeric: bool whether or not to return a numeric value or a report string
-    :return: numeric value of elapsed time or a report string for elapsed time
-    '''
-    if return_numeric:
-        return time() - current_time
-    else:
-        print('process completed in {:.2f}s'.format(time() - current_time))
+from general import tic, toc, row2mat
 
 
 def forceMaxwell_LeeRadok(model_params, time, indentation, radius):
@@ -866,6 +835,8 @@ class customModel():
         best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
+#@TODO test if retardance / relaxance has been made properly, specifically the delta function
+#@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader
 #@TODO make the map reader and add it to the how-to-guide

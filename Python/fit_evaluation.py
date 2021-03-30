@@ -1,8 +1,9 @@
 import viscofit as vf
 import general as gmp
 import numpy as np
+import os
 
-root = r'data\ViscoVerification-MultiLoadLevel-ExcelConvert'
+root = os.path.join('data', 'ViscoVerification-MultiLoadLevel-ExcelConvert')
 test_condition_dirs = gmp.get_folders(root)
 
 for test_cond in test_condition_dirs:
@@ -15,13 +16,22 @@ for test_cond in test_condition_dirs:
     for tc_data, tc_settings in zip(test_cond_data, test_cond_settings):
         data_file = gmp.load(tc_data)
         settings_file = gmp.load(tc_settings)
+        Ee = float(settings_file.split(sep='E0: ')[1].split(sep=' ')[0])
+
+        Es, Ts, Js = [], [], []
+        for arm_data in settings_file.split(sep='tau (s)')[1].split(sep='\n')[1:-1]:
+            row_data = [float(value) for value in arm_data.split(sep=' ') if value != '']
+            Es.append([row_data[1], 0])
+            Js.append([row_data[2], 0])
+            Ts.append([0, row_data[3]])
+        relaxance_params = np.concatenate(([Ee], np.array(Es).ravel() + np.array(Ts).ravel()))
+        retardance_params = np.concatenate(([Ee], np.array(Js).ravel() + np.array(Ts).ravel()))  # @TODO FIX THIS
 
         f, z, d, t = data_file['F (N)'], data_file['z (m)'], data_file['d (m)'], data_file['time (s)']
         mask = np.logical_and(f > 0, np.indices(f.shape) < np.argmax(f))[0]
         f, z, d, t = f[mask].values, z[mask].values, d[mask].values, t[mask].values
         h = d - z  # calculating the indentation as the difference between the deflection and the z-sensor
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
-        # @TODO LOAD THE PARAMETERS
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
 
     # initialize the fit for the single test condition
@@ -29,5 +39,11 @@ for test_cond in test_condition_dirs:
     voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
     # perform the fits
-    maxwell.fit(maxiter=100, max_model_size=5, fit_sequential=True, num_attempts=10)
-    voigt.fit(maxiter=100, max_model_size=5, fit_sequential=True, num_attempts=10)
+    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+
+    # compare the relaxance_params and relaxance_fit
+    # compare the retardance_params and retardance_fit
+
+    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'relaxance_fit.pkl'))
+    gmp.safesave(retardance_fit, os.path.join(test_cond, 'retardance_fit.pkl'))

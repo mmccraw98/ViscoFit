@@ -95,18 +95,16 @@ class maxwellModel():
             self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
             # create a radius valued vector for each experiment's radius value
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
-            # need to concatenate the target observable for quicker comparison in SSE
-            self.force = concatenate(forces)
+            self.force = forces
         # if there are single inputs, they must be formatted to a list for compatibility with the multiple input code
         else:
             # dt is a list with a single value rather than a vector as seen above
             self.dts = [times[1] - times[0]]
             self.time = [times]
             self.indentation = [indentations]
+            self.force = [forces]
             # radius is a list with a single value rather than a vector as seen above
             self.radii = [radii]
-            # the target observable must be a single array just like above
-            self.force = forces
         # define the boundaries
         self.E_logbounds = E_logbounds
         self.T_logbounds = T_logbounds
@@ -137,8 +135,8 @@ class maxwellModel():
         # lee and radok viscoelastic contact force
         # F = 16 * sqrt(R) / 3 * integral_0_t( Q( t - u ) * d( u )^3/2 ) du
         # apply for each set of experimental data and turn to a single vector for comparison with the vectorized force
-        return array([16 * sqrt(r) / 3 * convolve(make_relaxance(t, dt), h ** (3 / 2), mode='full')[: t.size] * dt
-                      for r, t, dt, h in zip(self.radii, self.time, self.dts, self.indentation)]).ravel()
+        return [16 * sqrt(r) / 3 * convolve(make_relaxance(t, dt), h ** (3 / 2), mode='full')[: t.size] * dt
+                for r, t, dt, h in zip(self.radii, self.time, self.dts, self.indentation)]
 
     def get_bounds(self, model_size, fluidity=False):
         '''
@@ -188,7 +186,7 @@ class maxwellModel():
         '''
         # calculate the sum of squared errors between the predicted force vector and the real force vector
         # sse = sum_ti_tf( ( F_pred( ti ) - F_real( ti ) )^2 )
-        sse = sum((self.LR_force(model_params=model_params) - self.force) ** 2, axis=0)
+        sse = sum([sum((pred - real) ** 2) for pred, real in zip(self.LR_force(model_params=model_params), self.force)])
         # if any parameters are outside of their associated boundaries, penalize the sse with an arbitrarily large error term
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
@@ -210,6 +208,7 @@ class maxwellModel():
         data = []  # store the global data for the fits
         # attempt a trial of fits for each hypothetical model in the desired range of model sizes
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
+            print('{}%'.format(100 * model_size / max_model_size), end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer for the trial
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
@@ -269,6 +268,7 @@ class maxwellModel():
         '''
         data = []  # store the global data for the fits
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
+            print('{}%'.format(100 * model_size / max_model_size), end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get the lower and upper bounds for the given model size
@@ -333,15 +333,14 @@ class kelvinVoigtModel():
             self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
             # create a radius valued vector for each experiment's radius
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
-            # must keep the target observable
-            self.scaled_indentation = concatenate([indentation ** (3 / 2) for indentation in indentations])
+            self.scaled_indentation = [indentation ** (3 / 2) for indentation in indentations]
         # if there are single inputs
         else:
             # dt is a single value rather than a 'mask' array as seen above
             self.dts = [times[1] - times[0]]
             self.time = [times]
             self.force = [forces]
-            self.scaled_indentation = indentations ** (3 / 2)
+            self.scaled_indentation = [indentations ** (3 / 2)]
             # radius is a single value rather than a 'mask' array as seen above
             self.radii = [radii]
         # define the boundaries
@@ -375,8 +374,8 @@ class kelvinVoigtModel():
         # calculate the prediction for d^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
         # and convert to a single row vector for easier comparison with the specified target d^3/2
         # d( t )^3/2 = 3 / ( 8 * sqrt( R ) ) * integral_0_t( U( t - u ) * F( u ) ) du
-        return array([3 / (sqrt(r) * 8) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
-                      for r, t, dt, f in zip(self.radii, self.time, self.dts, self.force)]).ravel()
+        return [3 / (sqrt(r) * 8) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
+                for r, t, dt, f in zip(self.radii, self.time, self.dts, self.force)]
 
     def get_bounds(self, model_size, fluidity=False):
         '''
@@ -426,7 +425,7 @@ class kelvinVoigtModel():
         '''
         # calculate the sum of squared errors between the predicted force vector and the real force vector
         # sse = sum_ti_tf( ( d^3/2_pred( ti ) - d^3/2_real( ti ) )^2 )
-        sse = sum((self.LR_scaled_indentation(model_params=model_params) - self.scaled_indentation) ** 2, axis=0)
+        sse = sum([sum((pred - real) ** 2) for pred, real in zip(self.LR_scaled_indentation(model_params=model_params), self.scaled_indentation)])
         # if any parameters are outside of their associated boundaries, penalize the sse with an arbitrarily large error term
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
@@ -448,6 +447,7 @@ class kelvinVoigtModel():
         data = []  # store the global data for the fits
         # attempt a trial of fits for each hypothetical model in the desired range of model sizes
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
+            print('{}%'.format(100 * model_size / max_model_size), end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer for the trial
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
@@ -515,6 +515,7 @@ class kelvinVoigtModel():
         '''
         data = []  # store the global data for the fits
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
+            print('{}%'.format(100 * model_size / max_model_size), end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer
             lower_bounds, upper_bounds = self.get_bounds(model_size,
@@ -584,7 +585,7 @@ class powerLawModel():
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             # concatenate the lists of experimental observables to put them into a single row vector form
             self.time = times
-            self.force = concatenate(forces)
+            self.force = forces
             # create a list of dt and radius valued vectors for each experiment
             self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
@@ -597,7 +598,7 @@ class powerLawModel():
             self.dts = [times[1] - times[0]]
             # radius is a single value rather than a 'mask' array as seen above
             self.radii = [radii]
-            self.force = forces
+            self.force = [forces]
             # calculate the numerical derivatives of the scaled indentations (d^3/2)
             self.scaled_indentations_deriv = [concatenate(([0], diff(indentations ** (3 / 2)))) / self.dts]
         # define the boundaries
@@ -617,8 +618,8 @@ class powerLawModel():
         # calculate the 'predicted' force for each experiment and combine the total signal to single row vector
         # for easier comparison with the experimental force
         # F( t ) = 16 * sqrt( R ) / 3 * integral_0_t( E( t - u ) * d/dt d( u )^3/2 ) du
-        return concatenate([16 * sqrt(r) / 3 * convolve(get_relaxation(t, dt), scaled_dh, mode='full')[: t.size] * dt
-                            for r, t, dt, scaled_dh in zip(self.radii, self.time, self.dts, self.scaled_indentations_deriv)])
+        return [16 * sqrt(r) / 3 * convolve(get_relaxation(t, dt), scaled_dh, mode='full')[: t.size] * dt
+                for r, t, dt, scaled_dh in zip(self.radii, self.time, self.dts, self.scaled_indentations_deriv)]
 
     def get_bounds(self):
         '''
@@ -651,7 +652,7 @@ class powerLawModel():
         '''
         # calculate the sum of squared errors between the 'predicted' force and the real force
         # sse = sum_ti_tf( ( F_predicted( ti ) - F_real( ti ) )^2 )
-        sse = sum((self.LR_force(model_params=model_params) - self.force) ** 2, axis=0)
+        sse = sum([sum((pred - real) ** 2) for pred, real in zip(self.LR_force(model_params=model_params), self.force)])
         # if the current model parameters are outside of the specified boundaries, return an arbitrarily largely scaled sse
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
             return 1e20 * sse
@@ -670,6 +671,7 @@ class powerLawModel():
         data = []  # store the global data for the fits
         tic()  # start the timer
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
+            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
             lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds for the fit
             guess = self.get_initial_guess()  # get an initial guess within the specified bounds
             # minimize the SSE within the specified bounds using nelder mead
@@ -698,6 +700,7 @@ class powerLawModel():
         data = []  # store the global data for the fits
         tic()  # start the timer
         for fit_attempt in range(num_attempts):  # perform a specified number of fits
+            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
             lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds
             bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
             guess = self.get_initial_guess()  # get an initial guess within the current bounds
@@ -782,6 +785,7 @@ class customModel():
         tic()  # start the timer
         lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
+            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
             guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
             # minimize the SSE of the custom function using nelder-mead with the given initial guess and parameter bounds
             results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
@@ -825,6 +829,7 @@ class customModel():
         tic()  # start the timer
         lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
+            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
             guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
             # minimize the SSE of the custom function within the specified bounds using dual annealing with a nelder mead local search
             results = dual_annealing(self.SSE, bounds, args=(lower_bounds, upper_bounds), maxiter=maxiter,

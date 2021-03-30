@@ -78,34 +78,34 @@ def safesave(thing, path, overwrite=False):
 
     def getnextfile(filename):
         '''
-        given a file name, with an extension, find the next numeric instance of the file name
+        given a tc_data name, with an extension, find the next numeric instance of the tc_data name
         i.e. the_file1.csv -> the_file2.csv
-        :param file_name: str file name with a file extension
-        :return: str the next numeric instance of the file name
+        :param file_name: str tc_data name with a tc_data extension
+        :return: str the next numeric instance of the tc_data name
         '''
-        name, extension = filename.split(sep='.')  # split the file name at the file extension
+        name, extension = filename.split(sep='.')  # split the tc_data name at the tc_data extension
         # \d indicates numeric digits, $ indicates the end of the string
-        stripped_name = re.sub(r'\d+$', '', name)  # remove any numbers at the end of the file
-        fnum = re.search(r'\d+$', name)  # get any numbers at the end of the file
-        # if there are any numbers at the end of the file, add 1 to get the next file number and cast it as a string
-        # if there aren't any numbers at the end of the file, use 1 as the next number
+        stripped_name = re.sub(r'\d+$', '', name)  # remove any numbers at the end of the tc_data
+        fnum = re.search(r'\d+$', name)  # get any numbers at the end of the tc_data
+        # if there are any numbers at the end of the tc_data, add 1 to get the next tc_data number and cast it as a string
+        # if there aren't any numbers at the end of the tc_data, use 1 as the next number
         next_fnum = str(int(fnum.group()) + 1) if fnum is not None else '1'
-        return stripped_name + next_fnum + '.' + extension  # return the next file number
+        return stripped_name + next_fnum + '.' + extension  # return the next tc_data number
 
     # defining some variables that will be used often
     dir_name = os.path.dirname(path)  # directory name
-    file_name = os.path.basename(path)  # file name
+    file_name = os.path.basename(path)  # tc_data name
 
     # check if path exists and make it if it doesn't
     if not os.path.isdir(dir_name):
         os.makedirs(dir_name)
 
-    # if path exists and the file exists get the next available file name and adjust the path to reflect the change of name
+    # if path exists and the tc_data exists get the next available tc_data name and adjust the path to reflect the change of name
     # if overwrite is enabled, then skip the renaming step and just overwrite using the given path
     while os.path.isfile(path := os.path.join(dir_name, file_name)) and not overwrite:
         file_name = getnextfile(file_name)
 
-    # get the file extension and save the file accordingly
+    # get the tc_data extension and save the tc_data accordingly
     extension = file_name.split(sep='.')[-1]
     if extension == 'csv':
         thing.to_csv(path, index=False)
@@ -123,13 +123,22 @@ def get_files(dir, req_ext=None):
     '''
     gets all the files in the given directory
     :param dir: str directory from which you want to load files from
-    :param req_ext: optional str required file extension
+    :param req_ext: optional str required tc_data extension
     :return: list of str names of the files in the given directory
     '''
     if req_ext is None:
         return [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
     else:
         return [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f)) and req_ext in f]
+
+
+def get_folders(dir):
+    '''
+    gets all the folders in the given directory
+    :param dir: str directory from which you want the sub-directories
+    :return: list of str names of the sub-directories
+    '''
+    return [f.path for f in os.scandir(dir) if f.is_dir()]
 
 
 def load(path, override_extension=None):
@@ -139,8 +148,8 @@ def load(path, override_extension=None):
     :return: the data
     '''
     if not os.path.isfile(path):
-        exit('file does not exist')
-    file_name = os.path.basename(path)  # file name
+        exit('tc_data does not exist')
+    file_name = os.path.basename(path)  # tc_data name
     extension = file_name.split(sep='.')[-1]
     if extension == 'csv' or override_extension == 'csv':
         data = read_csv(path)
@@ -153,7 +162,7 @@ def load(path, override_extension=None):
         with open(path, 'rb') as f:
             data = pickle.load(f)
     else:
-        exit('file extension not yet supported: {}'.format(file_name))
+        exit('tc_data extension not yet supported: {}'.format(file_name))
     return data
 
 

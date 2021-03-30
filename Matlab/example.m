@@ -140,6 +140,9 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
+saveas(resultsFigNelder,[path '\PlotResults-NelderMead'], 'output', 'jpg');
+saveas(resultsFigNelder,[path '\PlotResults-NelderMead'], 'output', 'fig');
+save([path '\FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
 
 %% Test the Fitting Functions using Simulated Annealing with Nelder-Mead
 % Create the class object
@@ -205,6 +208,9 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
+saveas(resultsFigNelder,[path '\PlotResults-Annealing'], 'output', 'jpg');
+saveas(resultsFigNelder,[path '\PlotResults-Annealing'], 'output', 'fig');
+save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
 
 %% Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
 % Create the class object
@@ -270,3 +276,6 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
+saveas(resultsFigNelder,[path '\PlotResults-NLS'], 'output', 'jpg');
+saveas(resultsFigNelder,[path '\PlotResults-NLS'], 'output', 'fig');
+save([path '\FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')

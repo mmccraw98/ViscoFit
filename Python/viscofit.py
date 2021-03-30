@@ -1,7 +1,6 @@
-from numpy import array, sum, sqrt, convolve, exp, ones, zeros, tile, insert, concatenate, argmin, diff, var, seterr
+from numpy import array, sum, sqrt, convolve, exp, ones, zeros, insert, concatenate, argmin, diff, var, seterr
 from numpy.random import uniform
 from scipy.optimize import minimize, dual_annealing
-from time import time
 from general import tic, toc, row2mat
 
 
@@ -136,7 +135,7 @@ class maxwellModel():
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             return relaxance
         # lee and radok viscoelastic contact force
-        # F = 16 * sqrt(R) / 3 * integral_0_t( Q( t - u ) * h( u )^3/2 ) du
+        # F = 16 * sqrt(R) / 3 * integral_0_t( Q( t - u ) * d( u )^3/2 ) du
         # apply for each set of experimental data and turn to a single vector for comparison with the vectorized force
         return array([16 * sqrt(r) / 3 * convolve(make_relaxance(t, dt), h ** (3 / 2), mode='full')[: t.size] * dt
                       for r, t, dt, h in zip(self.radii, self.time, self.dts, self.indentation)]).ravel()
@@ -351,11 +350,11 @@ class kelvinVoigtModel():
 
     def LR_scaled_indentation(self, model_params):
         '''
-        calculates the scaled response indentation (h^3/2) for a generalized maxwell model according to the lee and radok contact mechanics formulation
+        calculates the scaled response indentation (d^3/2) for a generalized maxwell model according to the lee and radok contact mechanics formulation
         :param model_params: numpy array contains the model compliances and time constants in either of the two following forms:
         to incorporate steady state fluidity: array([Elastic Compliance, Fluidity Time Constant, Arm 1 Compliance, Arm 1 Time Constant, ... Arm N Compliance, Arm N Time Constant])
         normal model: array([Elastic Compliance, Arm 1 Compliance, Arm 1 Time Constant, ... Arm N Compliance, Arm N Time Constant])
-        :return: numpy array scaled 'predicted' indentation signals (h^3/2) for all real (experimentally obtained) forces
+        :return: numpy array scaled 'predicted' indentation signals (d^3/2) for all real (experimentally obtained) forces
         '''
         def make_retardance(t, dt):  # function to make the retardance signal for an experiment given its parameters
             if model_params.size % 2 == 0:  # fluidity case:
@@ -373,9 +372,9 @@ class kelvinVoigtModel():
                 retardance += model_params[0] / dt  # add the delta function of the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             return retardance
-        # calculate the prediction for h^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
-        # and convert to a single row vector for easier comparison with the specified target h^3/2
-        # h( t )^3/2 = 3 / ( 8 * sqrt( R ) ) * integral_0_t( U( t - u ) * F( u ) ) du
+        # calculate the prediction for d^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
+        # and convert to a single row vector for easier comparison with the specified target d^3/2
+        # d( t )^3/2 = 3 / ( 8 * sqrt( R ) ) * integral_0_t( U( t - u ) * F( u ) ) du
         return array([3 / (sqrt(r) * 8) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
                       for r, t, dt, f in zip(self.radii, self.time, self.dts, self.force)]).ravel()
 
@@ -419,14 +418,14 @@ class kelvinVoigtModel():
 
     def SSE(self, model_params, lower_bounds, upper_bounds):
         '''
-        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (h^3/2)
+        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (d^3/2)
         :param model_params: numpy array of retardance parameters (refer to LR_force)
         :param lower_bounds: numpy array result of a single get_bounds[0] function call (lower bounds)
         :param upper_bounds: numpy array result of a single get_bounds[1] function call (upper bounds)
-        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (h^3/2)
+        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (d^3/2)
         '''
         # calculate the sum of squared errors between the predicted force vector and the real force vector
-        # sse = sum_ti_tf( ( h^3/2_pred( ti ) - h^3/2_real( ti ) )^2 )
+        # sse = sum_ti_tf( ( d^3/2_pred( ti ) - d^3/2_real( ti ) )^2 )
         sse = sum((self.LR_scaled_indentation(model_params=model_params) - self.scaled_indentation) ** 2, axis=0)
         # if any parameters are outside of their associated boundaries, penalize the sse with an arbitrarily large error term
         if any(lower_bounds > model_params) or any(upper_bounds < model_params):
@@ -589,7 +588,7 @@ class powerLawModel():
             # create a list of dt and radius valued vectors for each experiment
             self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
-            # calculate the numerical derivatives of the scaled indentations d/dt (h(t)^3/2)
+            # calculate the numerical derivatives of the scaled indentations d/dt (d(t)^3/2)
             self.scaled_indentations_deriv = [concatenate(([0], diff(indentation ** (3 / 2)))) / dt for indentation, dt in zip(indentations, self.dts)]
         # if there are single inputs put them each into arrays except for the scaled indentation derivatives
         else:
@@ -599,7 +598,7 @@ class powerLawModel():
             # radius is a single value rather than a 'mask' array as seen above
             self.radii = [radii]
             self.force = forces
-            # calculate the numerical derivatives of the scaled indentations (h^3/2)
+            # calculate the numerical derivatives of the scaled indentations (d^3/2)
             self.scaled_indentations_deriv = [concatenate(([0], diff(indentations ** (3 / 2)))) / self.dts]
         # define the boundaries
         self.E0_logbounds = E0_logbounds
@@ -617,7 +616,7 @@ class powerLawModel():
             return model_params[0] * (1 + t / dt) ** (- model_params[1])
         # calculate the 'predicted' force for each experiment and combine the total signal to single row vector
         # for easier comparison with the experimental force
-        # F( t ) = 16 * sqrt( R ) / 3 * integral_0_t( E( t - u ) * d/dt h( u )^3/2 ) du
+        # F( t ) = 16 * sqrt( R ) / 3 * integral_0_t( E( t - u ) * d/dt d( u )^3/2 ) du
         return concatenate([16 * sqrt(r) / 3 * convolve(get_relaxation(t, dt), scaled_dh, mode='full')[: t.size] * dt
                             for r, t, dt, scaled_dh in zip(self.radii, self.time, self.dts, self.scaled_indentations_deriv)])
 
@@ -742,11 +741,11 @@ class customModel():
 
     def SSE(self, model_params, lower_bounds, upper_bounds):
         '''
-        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (h^3/2)
+        gives the sum of squared errors between the scaled 'predicted' indentation and real scaled (experimentally obtained) indentation signals (d^3/2)
         :param model_params: numpy array of retardance parameters (refer to LR_force)
         :param lower_bounds: numpy array result of a single get_bounds[0] function call (lower bounds)
         :param upper_bounds: numpy array result of a single get_bounds[1] function call (upper bounds)
-        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (h^3/2)
+        :return: float sum of squared errors between the scaled 'predicted' and real indentation signals (d^3/2)
         '''
         # calculate the sum of squared errors between the current prediction of the target observable and the real target observable
         # sse = sum_ti_tf( ( Custom_Function_Prediction( ti ) - Real( ti ) )^2 )

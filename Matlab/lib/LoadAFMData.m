@@ -261,8 +261,8 @@ for k = 1:length(Files)
         dataStruct(k).t_approach = dataStruct(k).t(1:z_max_ind);
     end
 
-    if size(dataStruct(k).z_approach,1) <= 100
-        fprintf('\nThere is a bad file, with very few z-sensor datapoints:\n%s\n\n',Files(k).name);
+    if numel(dataStruct(k).z_approach) <= 100
+        fprintf('\nWarning: There is a file with very few (<100) z-sensor\ndatapoints in the approach phase:\n%s\n\n',Files(k).name);
     end    
     
     % Calculate Deflection Offset

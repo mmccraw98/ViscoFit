@@ -15,6 +15,8 @@ def forceMaxwell_LeeRadok(model_params, time, indentation, radius):
     :param radius: float radius of the indenter tip
     :return: (n,) numpy array force signal of the loading cycle
     '''
+    # ABSOLUTELY MUST START TIME FROM 0
+    time = time - time[0]
     if model_params.size % 2 == 0:  # fluidity case:
         time_matrix = row2mat(time, model_params[0::2].size)
         relaxance = - sum(model_params[0::2] / model_params[1::2] * exp(- time_matrix / model_params[1::2]), axis=1)
@@ -39,17 +41,17 @@ def indentationKelvinVoigt_LeeRadok(model_params, time, force, radius):
     :param radius: float radius of the indenter tip
     :return: (n,) numpy array indentation signal of the loading cycle
     '''
-    dirac = zeros(time.shape)
-    dirac[0] = 1
+    # ABSOLUTELY MUST START TIME FROM 0
+    time = time - time[0]
     if model_params.size % 2 == 0:  # fluidity case
         time_matrix = row2mat(time, model_params[0::2].size)
         retardance = sum(model_params[2::2] / model_params[3::2] * exp(- time_matrix / model_params[3::2]), axis=1) + model_params[1]
-        retardance += (model_params[0] * dirac) / (time[1] - time[0])  # add the delta function to the relaxances
+        retardance[0] += (model_params[0]) / (time[1] - time[0])  # add the delta function to the relaxances
         # must divide by dt since the integral of dirac delta MUST be 1 by definiton
     else:  # no fluidity case
         time_matrix = row2mat(time, model_params[1::2].size)
         retardance = sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-        retardance += (model_params[0] * dirac) / (time[1] - time[0])  # add the delta function to the relaxances
+        retardance[0] += (model_params[0]) / (time[1] - time[0])  # add the delta function to the relaxances
         # must divide by dt since the integral of dirac delta MUST be 1 by definiton
     return (3 / (8 * sqrt(radius)) * convolve(force, retardance, mode='full')[:time.size] * (time[1] - time[0])) ** (2 / 3)
 
@@ -89,10 +91,11 @@ class maxwellModel():
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             # time and indentation stay in their original forms
-            self.time = times
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [t - t[0] for t in times]
             self.indentation = indentations
             # create a dt valued vector for each experiment's dt value
-            self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
+            self.dts = [t[1] - t[0] for t in times]
             # create a radius valued vector for each experiment's radius value
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
             self.force = forces
@@ -100,7 +103,8 @@ class maxwellModel():
         else:
             # dt is a list with a single value rather than a vector as seen above
             self.dts = [times[1] - times[0]]
-            self.time = [times]
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [times - times[0]]
             self.indentation = [indentations]
             self.force = [forces]
             # radius is a list with a single value rather than a vector as seen above
@@ -138,17 +142,6 @@ class maxwellModel():
         return [16 * sqrt(r) / 3 * convolve(make_relaxance(t, dt), h ** (3 / 2), mode='full')[: t.size] * dt
                 for r, t, dt, h in zip(self.radii, self.time, self.dts, self.indentation)]
 
-    if model_params.size % 2 == 0:  # fluidity case:
-        time_matrix = row2mat(time, model_params[0::2].size)
-        relaxance = - sum(model_params[0::2] / model_params[1::2] * exp(- time_matrix / model_params[1::2]), axis=1)
-        relaxance[0] += sum(model_params[0::2]) / (time[1] - time[0])  # add the delta function to the relaxances
-        # must divide by dt since the integral of dirac delta MUST be 1 by definiton
-    else:  # no fluidity case
-        time_matrix = row2mat(time, model_params[1::2].size)
-        relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-        relaxance[0] += (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # add the delta function of the relaxances
-        # must divide by dt since the integral of dirac delta MUST be 1 by definiton
-    return 16 * sqrt(radius) / 3 * convolve(relaxance, indentation ** (3 / 2), mode='full')[:time.size] * (time[1] - time[0])
 
     def get_bounds(self, model_size, fluidity=False):
         '''
@@ -339,10 +332,11 @@ class kelvinVoigtModel():
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             # store the time and force data as arrays (as they were given)
-            self.time = times
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [t - t[0] for t in times]
             self.force = forces
             # create a dt valued vector for each experiment's dt
-            self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
+            self.dts = [t[1] - t[0] for t in times]
             # create a radius valued vector for each experiment's radius
             self.radii = [radius * ones(arr.shape) for radius, arr in zip(radii, forces)]
             self.scaled_indentation = [indentation ** (3 / 2) for indentation in indentations]
@@ -350,7 +344,8 @@ class kelvinVoigtModel():
         else:
             # dt is a single value rather than a 'mask' array as seen above
             self.dts = [times[1] - times[0]]
-            self.time = [times]
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [times - times[0]]
             self.force = [forces]
             self.scaled_indentation = [indentations ** (3 / 2)]
             # radius is a single value rather than a 'mask' array as seen above
@@ -596,7 +591,8 @@ class powerLawModel():
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             # concatenate the lists of experimental observables to put them into a single row vector form
-            self.time = times
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [t - t[0] for t in times]
             self.force = forces
             # create a list of dt and radius valued vectors for each experiment
             self.dts = [(t[1] - t[0]) * ones(t.shape) for t in times]
@@ -605,7 +601,8 @@ class powerLawModel():
             self.scaled_indentations_deriv = [concatenate(([0], diff(indentation ** (3 / 2)))) / dt for indentation, dt in zip(indentations, self.dts)]
         # if there are single inputs put them each into arrays except for the scaled indentation derivatives
         else:
-            self.time = [times]
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = [times - times[0]]
             # dt is a single value rather than a 'mask' array as seen above
             self.dts = [times[1] - times[0]]
             # radius is a single value rather than a 'mask' array as seen above
@@ -740,6 +737,8 @@ class customModel():
             if any([len(arr) != len(forces) for arr in (times, indentations, radii)]):  # check to make sure that the experimental data is all the same size
                 exit('Error: Size Mismatch in Experimental Observables!  All experimental observables must be the same size!')
             self.force = concatenate(forces)  # put the forces into a single row vector
+            # ABSOLUTELY MUST START TIME FROM 0
+            times = [t - t[0] for t in times]
             self.time = concatenate(times)  # do the same for time
             self.indentation = concatenate(indentations)  # and indentation
             # make row vectors containing the radius and dt values for each experiment
@@ -747,7 +746,8 @@ class customModel():
             self.dts = concatenate([(t[1] - t[0]) * ones(t.shape) for t in times])
         else:  # if only a single experimental trial is given, store all the values as vectors
             self.force = forces
-            self.time = times
+            # ABSOLUTELY MUST START TIME FROM 0
+            self.time = times - times[0]
             self.indentation = indentations
             self.radii = radii * ones(forces.shape)
             self.dts = (times[1] - times[0]) * ones(forces.shape)
@@ -851,13 +851,14 @@ class customModel():
         best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
-#@TODO test if retardance / relaxance has been made properly, specifically the delta function
 #@TODO test without simultaneous fits
 #@TODO test with retract
 #@TODO benchmark all against nonlinear least squares gradient descent methods
 #@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)
-#@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader
+
+#@TODO THESE ARE FOR LATER IMPLEMENTATIONS OF THE CODE
+#@TODO add conical and flat punch indenter options
 #@TODO make the map reader and add it to the how-to-guide
 #@TODO cuda parallelization of map reader?
 #@TODO add public package requirements and get a license

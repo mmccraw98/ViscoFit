@@ -30,7 +30,9 @@ for i, test_cond in enumerate(test_condition_dirs):
             Js.append([row_data[2], 0])
             Ts.append([0, row_data[3]])
         relaxance_params = np.concatenate(([Ee], np.array(Es).ravel() + np.array(Ts).ravel()))
-        retardance_params = np.concatenate(([np.sum(Js) + 1 / Ee], np.array(Js).ravel() + np.array(Ts).ravel()))
+        # omit retardance for now, it is not calculated in this way
+        # will test the retardance param error as a post-process
+        # retardance_params = np.concatenate(([np.sum(Js) + 1 / Ee], np.array(Js).ravel() + np.array(Ts).ravel()))
 
         # get the experimental data from the files
         f, z, d, t = data_file['F (N)'], data_file['z (m)'], data_file['d (m)'], data_file['time (s)']
@@ -39,19 +41,6 @@ for i, test_cond in enumerate(test_condition_dirs):
         h = d - z  # calculating the indentation as the difference between the deflection and the z-sensor
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
-
-        print(relaxance_params, R)
-        fp=vf.forceMaxwell_LeeRadok(relaxance_params, t, h, R)
-        mod=vf.maxwellModel(f, h, t, R)
-        fp=mod.LR_force(relaxance_params)[0]
-        import matplotlib.pyplot as plt
-        plt.plot(fp, label='pred')
-        plt.plot(f, label='real')
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.legend()
-        plt.show()
-        quit()
 
     # initialize the fit for the single test condition
     maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)

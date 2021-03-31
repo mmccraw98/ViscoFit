@@ -58,8 +58,6 @@ classdef ViscoFit
         nu double {mustBePositive}
         nu_cell cell
         fitLog logical
-        thinSample logical
-        sampleThickness double
     end
     
     methods
@@ -92,9 +90,7 @@ classdef ViscoFit
                 obj.nu_cell = temp;
                 obj.tipGeom = "spherical";
                 obj.fitLog = false;
-                obj.minTimescale = 1e-4;
-                obj.thinSample = 0;
-                obj.sampleThickness = NaN;
+                obj.minTimescale = 1e-4; % Default
                 if ~isempty(varargin)
                     if isa(varargin{1},'struct')
                         % Grab the settings structure
@@ -114,18 +110,11 @@ classdef ViscoFit
                         obj.tipGeom = string(inputSettings.tipGeom);
                         obj.fitLog = logical(inputSettings.fitLog);
                         obj.minTimescale = inputSettings.minTimescale;
-                        obj.thinSample = logical(inputSettings.thinSample);
-                        obj.sampleThickness = inputSettings.sampleThickness;
                         
                     else
                         error('You are not passing the settings correctly to the ViscoFit Class Initialization. Please ensure the fifth argument is a structure containing your settings.');
                     end
-                end
-                
-                if obj.thinSample
-                     if obj.sampleThickness < 0 || ~isfinite(obj.sampleThickness)
-                        error('You specified a thin-sample correction, but gave an invalid sample thickness! Please double-check that your sample thickness is finite and positive!');
-                     end
+                    
                 end
                 
                 if ~obj.fitLog
@@ -172,6 +161,7 @@ classdef ViscoFit
                     obj.tipSize = horzcat(temp{:});
                     obj.tipSize_cell = temp;
                     
+                    
                 end
                 
             else
@@ -193,7 +183,7 @@ classdef ViscoFit
             %   the LR_Maxwell function.
             
             % Calculate test forces
-            test_forces = LR_Maxwell(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting,obj.thinSample,obj.sampleThickness);
+            test_forces = LR_Maxwell(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
             
             % calculate global residual
             sse_global = sum((obj.forces-test_forces).^2);
@@ -236,7 +226,7 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test forces
-            test_forces = LR_Maxwell(params,obj.times_cell{idx},obj.dts_cell{idx},obj.indentations_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom,elasticSetting,fluidSetting,obj.thinSample,obj.sampleThickness);
+            test_forces = LR_Maxwell(params,obj.times_cell{idx},obj.dts_cell{idx},obj.indentations_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom,elasticSetting,fluidSetting);
             
             % calculate global residual
             sse_global = sum((obj.forces_cell{idx}-test_forces).^2);
@@ -278,7 +268,7 @@ classdef ViscoFit
             %   the LR_Voigt function.
             
             % Calculate test indentation
-            test_indentations = LR_Voigt(params,obj.times,obj.dts,obj.forces,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting,obj.thinSample,obj.sampleThickness);
+            test_indentations = LR_Voigt(params,obj.times,obj.dts,obj.forces,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
             
             switch obj.tipGeom
                 case "spherical"
@@ -328,7 +318,7 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test indentation
-            test_indentations = LR_Voigt(params,obj.times_cell{idx},obj.dts_cell{idx},obj.forces_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom,elasticSetting,fluidSetting,obj.thinSample,obj.sampleThickness);
+            test_indentations = LR_Voigt(params,obj.times_cell{idx},obj.dts_cell{idx},obj.forces_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom,elasticSetting,fluidSetting);
             
             switch obj.tipGeom
                 case "spherical"
@@ -377,7 +367,7 @@ classdef ViscoFit
             %   the LR_PLR function.
             
             % Calculate test forces
-            test_forces = LR_PLR(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom,obj.thinSample,obj.sampleThickness);
+            test_forces = LR_PLR(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom);
             
             % calculate global residual
             sse_global = sum((obj.forces-test_forces).^2);
@@ -407,7 +397,7 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test forces
-            test_forces = LR_PLR(params,obj.times_cell{idx},obj.dts_cell{idx},obj.indentations_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom,obj.thinSample,obj.sampleThickness);
+            test_forces = LR_PLR(params,obj.times_cell{idx},obj.dts_cell{idx},obj.indentations_cell{idx},obj.tipSize_cell{idx},obj.nu_cell{idx},obj.tipGeom);
             
             % calculate global residual
             sse_global = sum((obj.forces_cell{idx}-test_forces).^2);

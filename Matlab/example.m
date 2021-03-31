@@ -74,8 +74,6 @@ classSettings.minTimescale = 1e-4;      % Timescale for the first viscoelastic e
 classSettings.nu = nu;                  % Sample Poisson Ratio for all curves
 classSettings.tipGeom = tipGeom;        % Tip geometry for these experiments
 classSettings.fitLog = 0;               % Log-scale-resample the data before fitting (faster)
-classSettings.thinSample = 0;           % Use a thin-sample correction (Taylor Series Expansion in the Deformation)
-classSettings.sampleThickness = NaN;    % Sample Thickness if using thin sample correction (must be a positive, double precision number in units of METERS)
 
 % Create the class object
 visco = ViscoFit(forces,times,indentations,tipSize,classSettings);

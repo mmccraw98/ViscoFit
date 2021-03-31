@@ -208,7 +208,7 @@ class maxwellModel():
         data = []  # store the global data for the fits
         # attempt a trial of fits for each hypothetical model in the desired range of model sizes
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / max_model_size), end='\r')
+            print('{}%'.format(100 * model_size / max_model_size))#, end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer for the trial
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
@@ -268,7 +268,7 @@ class maxwellModel():
         '''
         data = []  # store the global data for the fits
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / max_model_size), end='\r')
+            print('{}%'.format(100 * model_size / max_model_size))#, end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get the lower and upper bounds for the given model size
@@ -447,7 +447,7 @@ class kelvinVoigtModel():
         data = []  # store the global data for the fits
         # attempt a trial of fits for each hypothetical model in the desired range of model sizes
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / max_model_size), end='\r')
+            print('{}%'.format(100 * model_size / max_model_size))#, end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer for the trial
             lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
@@ -515,7 +515,7 @@ class kelvinVoigtModel():
         '''
         data = []  # store the global data for the fits
         for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / max_model_size), end='\r')
+            print('{}%'.format(100 * model_size / max_model_size))#, end='\r')
             current_data = []  # store the data for the current fitting attempts
             tic()  # start the timer
             lower_bounds, upper_bounds = self.get_bounds(model_size,
@@ -671,7 +671,7 @@ class powerLawModel():
         data = []  # store the global data for the fits
         tic()  # start the timer
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
+            print('{}%'.format(100 * fit_attempt / num_attempts))#, end='\r')
             lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds for the fit
             guess = self.get_initial_guess()  # get an initial guess within the specified bounds
             # minimize the SSE within the specified bounds using nelder mead
@@ -700,7 +700,7 @@ class powerLawModel():
         data = []  # store the global data for the fits
         tic()  # start the timer
         for fit_attempt in range(num_attempts):  # perform a specified number of fits
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
+            print('{}%'.format(100 * fit_attempt / num_attempts))#, end='\r')
             lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds
             bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
             guess = self.get_initial_guess()  # get an initial guess within the current bounds
@@ -785,7 +785,7 @@ class customModel():
         tic()  # start the timer
         lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
+            print('{}%'.format(100 * fit_attempt / num_attempts))#, end='\r')
             guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
             # minimize the SSE of the custom function using nelder-mead with the given initial guess and parameter bounds
             results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
@@ -829,7 +829,7 @@ class customModel():
         tic()  # start the timer
         lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
+            print('{}%'.format(100 * fit_attempt / num_attempts))#, end='\r')
             guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
             # minimize the SSE of the custom function within the specified bounds using dual annealing with a nelder mead local search
             results = dual_annealing(self.SSE, bounds, args=(lower_bounds, upper_bounds), maxiter=maxiter,

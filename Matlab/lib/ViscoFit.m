@@ -108,7 +108,7 @@ classdef ViscoFit
                             obj.nu_cell = temp;
                         end
                         obj.tipGeom = string(inputSettings.tipGeom);
-                        obj.fitLog = logical(inputSettings.fitLog);
+                        obj.fitLog = inputSettings.fitLog;
                         obj.minTimescale = inputSettings.minTimescale;
                         
                     else
@@ -160,7 +160,6 @@ classdef ViscoFit
                     temp = cellfun(@(r,t) r.*ones(size(t)),tipSize,obj.times_cell,'UniformOutput',false);
                     obj.tipSize = horzcat(temp{:});
                     obj.tipSize_cell = temp;
-                    
                     
                 end
                 
@@ -439,7 +438,7 @@ classdef ViscoFit
             n_elements = 3;             % Fit iteratively for up to 3 elements
             elasticSetting = 1;         % Include Elastic Term
             fluidSetting = 0;           % No Steady-State Fluidity
-            n_iterations = 100;         % Use 100 random initializations
+            n_iterations = 100;         % Use 100 random initializations as a default
             n_fitIterations = 1e4;      % No. of iterations for solver
             if ~isempty(varargin)
                 % Only one varargin is accepted, and it is a structure

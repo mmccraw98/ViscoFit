@@ -70,10 +70,10 @@ end
 classSettings = struct;
 
 % Test the Maxwell
-classSettings.minTimescale = 1e-4;      % Timescale for the first viscoelastic element
-classSettings.nu = nu;                  % Sample Poisson Ratio for all curves
-classSettings.tipGeom = tipGeom;        % Tip geometry for these experiments
-classSettings.fitLog = 0;               % Log-scale-resample the data before fitting (faster)
+classSettings.minTimescale = 1e-4;              % Timescale for the first viscoelastic element
+classSettings.nu = nu;                          % Sample Poisson Ratio for all curves
+classSettings.tipGeom = tipGeom;                % Tip geometry for these experiments
+classSettings.fitLog = false;                   % Log-scale-resample the data before fitting (faster)
 
 % Create the class object
 visco = ViscoFit(forces,times,indentations,tipSize,classSettings);
@@ -82,13 +82,13 @@ visco = ViscoFit(forces,times,indentations,tipSize,classSettings);
 fitSettings = struct;
 
 % Test the Maxwell
-fitSettings.solver = 'nelder-mead';     % Fit using Nelder-Mead Simplex
-fitSettings.model = 'maxwell';          % Use Generalized Maxwell Model
-fitSettings.n_elements = 3;             % Fit iteratively for up to 4 elements
-fitSettings.elasticSetting = 1;         % Include Elastic Term
-fitSettings.fluidSetting = 0;           % No Steady-State Fluidity
-fitSettings.n_iterations = 200;         % Use 500 random initializations
-fitSettings.n_fitIterations = 5e3;      % No. of iterations for solver
+fitSettings.solver = 'nelder-mead';             % Fit using Nelder-Mead Simplex
+fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
+fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+fitSettings.elasticSetting = 1;                 % Include Elastic Term
+fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
+fitSettings.n_iterations = 200;                 % Use 200 random initializations
+fitSettings.n_fitIterations = 5e3;              % No. of iterations for solver
 maxwellFit_NM = visco.fitData(fitSettings);
 
 % Test the Voigt
@@ -138,8 +138,8 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
-saveas(resultsFigNelder,[path '\PlotResults-NelderMead'], 'output', 'jpg');
-saveas(resultsFigNelder,[path '\PlotResults-NelderMead'], 'output', 'fig');
+saveas(resultsFigNelder,[path '\PlotResults-NelderMead.jpg']);
+saveas(resultsFigNelder,[path '\PlotResults-NelderMead.fig']);
 save([path '\FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
 
 %% Test the Fitting Functions using Simulated Annealing with Nelder-Mead
@@ -150,13 +150,13 @@ save([path '\FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_N
 % fitSettings = struct;
 
 % Test the Maxwell
-fitSettings.solver = 'annealing';       % Fit using Simulated Annealing
-fitSettings.model = 'maxwell';          % Use Generalized Maxwell Model
-fitSettings.n_elements = 3;             % Fit iteratively for up to 4 elements
-fitSettings.elasticSetting = 1;         % Include Elastic Term
-fitSettings.fluidSetting = 0;           % No Steady-State Fluidity
-fitSettings.n_iterations = 5;           % Use 5 random initializations
-fitSettings.n_fitIterations = 1e3;      % No. of iterations for solver
+fitSettings.solver = 'annealing';               % Fit using Simulated Annealing
+fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
+fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+fitSettings.elasticSetting = 1;                 % Include Elastic Term
+fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
+fitSettings.n_iterations = 5;                   % Use 5 random initializations
+fitSettings.n_fitIterations = 1e3;              % No. of iterations for solver
 maxwellFit_Anneal = visco.fitData(fitSettings);
 
 % Test the Voigt
@@ -206,8 +206,8 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
-saveas(resultsFigNelder,[path '\PlotResults-Annealing'], 'output', 'jpg');
-saveas(resultsFigNelder,[path '\PlotResults-Annealing'], 'output', 'fig');
+saveas(resultsFigNelder,[path '\PlotResults-Annealing.jpg']);
+saveas(resultsFigNelder,[path '\PlotResults-Annealing.fig']);
 save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
 
 %% Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
@@ -218,13 +218,13 @@ save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','P
 % fitSettings = struct;
 
 % Test the Maxwell
-fitSettings.solver = 'nls';             % Fit using lsqcurvefit
-fitSettings.model = 'maxwell';          % Use Generalized Maxwell Model
-fitSettings.n_elements = 3;             % Fit iteratively for up to 4 elements
-fitSettings.elasticSetting = 1;         % Include Elastic Term
-fitSettings.fluidSetting = 0;           % No Steady-State Fluidity
-fitSettings.n_iterations = 200;         % Use 5 random initializations
-fitSettings.n_fitIterations = 1e4;      % No. of iterations for solver
+fitSettings.solver = 'nls';                     % Fit using lsqcurvefit
+fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
+fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+fitSettings.elasticSetting = 1;                 % Include Elastic Term
+fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
+fitSettings.n_iterations = 200;                 % Use 200 random initializations
+fitSettings.n_fitIterations = 1e4;              % No. of iterations for solver
 maxwellFit_NLS = visco.fitData(fitSettings);
 
 % Test the Voigt
@@ -274,6 +274,6 @@ for i = 1:fitSettings.n_elements
     set(gca,'xscale','log','yscale','log')
     hold off
 end
-saveas(resultsFigNelder,[path '\PlotResults-NLS'], 'output', 'jpg');
-saveas(resultsFigNelder,[path '\PlotResults-NLS'], 'output', 'fig');
+saveas(resultsFigNelder,[path '\PlotResults-NLS.jpg']);
+saveas(resultsFigNelder,[path '\PlotResults-NLS.fig']);
 save([path '\FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')

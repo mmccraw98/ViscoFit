@@ -42,13 +42,16 @@ for i, test_cond in enumerate(test_condition_dirs):
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
 
+    # start the timer
+    gmp.tic()
+
     # initialize the fit for the single test condition
     maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)
     voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
     # perform the fits
-    relaxance_fit = maxwell.fit(maxiter=5000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
-    retardance_fit = voigt.fit(maxiter=5000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
 
     # compare the relaxance_params and relaxance_fit
     # compare the retardance_params and retardance_fit
@@ -56,6 +59,9 @@ for i, test_cond in enumerate(test_condition_dirs):
 
     gmp.safesave(relaxance_fit, os.path.join(test_cond, 'relaxance_fit.pkl'))
     gmp.safesave(retardance_fit, os.path.join(test_cond, 'retardance_fit.pkl'))
+
+    # stop the timers
+    gmp.toc()
 
     # get the error in the harmonic quantities @TODO
 

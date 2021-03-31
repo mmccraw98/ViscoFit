@@ -40,18 +40,30 @@ for i, test_cond in enumerate(test_condition_dirs):
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
 
+        print(relaxance_params, R)
+        fp=vf.forceMaxwell_LeeRadok(relaxance_params, t, h, R)
+        mod=vf.maxwellModel(f, h, t, R)
+        fp=mod.LR_force(relaxance_params)[0]
+        import matplotlib.pyplot as plt
+        plt.plot(fp, label='pred')
+        plt.plot(f, label='real')
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.legend()
+        plt.show()
+        quit()
+
     # initialize the fit for the single test condition
     maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)
     voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
     # perform the fits
-    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
-    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    relaxance_fit = maxwell.fit(maxiter=5000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    retardance_fit = voigt.fit(maxiter=5000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
 
     # compare the relaxance_params and relaxance_fit
     # compare the retardance_params and retardance_fit
     gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'))
-    gmp.safesave(retardance_params, os.path.join(test_cond, 'retardance_real.pkl'))
 
     gmp.safesave(relaxance_fit, os.path.join(test_cond, 'relaxance_fit.pkl'))
     gmp.safesave(retardance_fit, os.path.join(test_cond, 'retardance_fit.pkl'))

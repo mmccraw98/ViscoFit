@@ -18,12 +18,12 @@ def forceMaxwell_LeeRadok(model_params, time, indentation, radius):
     if model_params.size % 2 == 0:  # fluidity case:
         time_matrix = row2mat(time, model_params[0::2].size)
         relaxance = - sum(model_params[0::2] / model_params[1::2] * exp(- time_matrix / model_params[1::2]), axis=1)
-        relaxance += sum(model_params[0::2]) / (time[1] - time[0])  # add the delta function to the relaxances
+        relaxance[0] += sum(model_params[0::2]) / (time[1] - time[0])  # add the delta function to the relaxances
         # must divide by dt since the integral of dirac delta MUST be 1 by definiton
     else:  # no fluidity case
         time_matrix = row2mat(time, model_params[1::2].size)
         relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-        relaxance += (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # add the delta function of the relaxances
+        relaxance[0] += (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # add the delta function of the relaxances
         # must divide by dt since the integral of dirac delta MUST be 1 by definiton
     return 16 * sqrt(radius) / 3 * convolve(relaxance, indentation ** (3 / 2), mode='full')[:time.size] * (time[1] - time[0])
 
@@ -123,13 +123,13 @@ class maxwellModel():
                 time_matrix = row2mat(t, model_params[0::2].size)  # needed for multiplication with model parameters
                 # Q = Eg * delta( t ) - sum_i_N+1( Ei / Ti * exp( -t / Ti ) ) <- sum over all arms
                 relaxance = - sum(model_params[0::2] / model_params[1::2] * exp(- time_matrix / model_params[1::2]), axis=1)
-                relaxance += sum(model_params[0::2]) / dt  # add the delta function of magnitude Eg to the relaxances
+                relaxance[0] += sum(model_params[0::2]) / dt  # add the delta function of magnitude Eg to the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             else:  # no fluidity case
                 time_matrix = row2mat(t, model_params[1::2].size)  # needed for multiplication with model parameters
                 # Q = Eg * delta( t ) - sum_i_N( Ei / Ti * exp( -t / Ti ) ) <- sum over all but the elastic ('restoring') arm
                 relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-                relaxance += (model_params[0] + sum(model_params[1::2])) / dt  # add the delta function of magnitude Eg to the relaxances
+                relaxance[0] += (model_params[0] + sum(model_params[1::2])) / dt  # add the delta function of magnitude Eg to the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             return relaxance
         # lee and radok viscoelastic contact force
@@ -137,6 +137,18 @@ class maxwellModel():
         # apply for each set of experimental data and turn to a single vector for comparison with the vectorized force
         return [16 * sqrt(r) / 3 * convolve(make_relaxance(t, dt), h ** (3 / 2), mode='full')[: t.size] * dt
                 for r, t, dt, h in zip(self.radii, self.time, self.dts, self.indentation)]
+
+    if model_params.size % 2 == 0:  # fluidity case:
+        time_matrix = row2mat(time, model_params[0::2].size)
+        relaxance = - sum(model_params[0::2] / model_params[1::2] * exp(- time_matrix / model_params[1::2]), axis=1)
+        relaxance[0] += sum(model_params[0::2]) / (time[1] - time[0])  # add the delta function to the relaxances
+        # must divide by dt since the integral of dirac delta MUST be 1 by definiton
+    else:  # no fluidity case
+        time_matrix = row2mat(time, model_params[1::2].size)
+        relaxance = - sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
+        relaxance[0] += (model_params[0] + sum(model_params[1::2])) / (time[1] - time[0])  # add the delta function of the relaxances
+        # must divide by dt since the integral of dirac delta MUST be 1 by definiton
+    return 16 * sqrt(radius) / 3 * convolve(relaxance, indentation ** (3 / 2), mode='full')[:time.size] * (time[1] - time[0])
 
     def get_bounds(self, model_size, fluidity=False):
         '''
@@ -361,14 +373,14 @@ class kelvinVoigtModel():
                 # calculate the retardance
                 # U = Jg + sum_i_N+1( Ji / Ti * exp( -t / Ti ) ) <- sum over all arms
                 retardance = sum(model_params[2::2] / model_params[3::2] * exp(- time_matrix / model_params[3::2]), axis=1) + model_params[1]
-                retardance += model_params[0] / dt  # add the delta function to the relaxances
+                retardance[0] += model_params[0] / dt  # add the delta function to the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             else:  # no fluidity case
                 time_matrix = row2mat(t, model_params[1::2].size)  # needed for vectorized math with model parameter vectors
                 # calculate the retardance
                 # U = Jg + sum_i_N( Ji / Ti * exp( -t / Ti ) ) <- sum over all but the elastic arm
                 retardance = sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
-                retardance += model_params[0] / dt  # add the delta function of the relaxances
+                retardance[0] += model_params[0] / dt  # add the delta function of the relaxances
                 # must divide by dt since the integral of dirac delta MUST be 1 by definiton
             return retardance
         # calculate the prediction for d^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
@@ -840,6 +852,9 @@ class customModel():
         return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set
 
 #@TODO test if retardance / relaxance has been made properly, specifically the delta function
+#@TODO test without simultaneous fits
+#@TODO test with retract
+#@TODO benchmark all against nonlinear least squares gradient descent methods
 #@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)
 #@TODO add conical and flat punch indenter options
 #@TODO add the ibw reader

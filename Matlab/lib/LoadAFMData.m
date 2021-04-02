@@ -1,7 +1,28 @@
 function [dataStruct] = LoadAFMData(pathname,varargin)
 %LOADAFMDATA Load AFM Data from an External Source
 %   This function takes in a pathname, and will then parse it looking for
-%   relevant AFM SFS files. Implementing new filetypes 
+%   relevant AFM SFS files. Implementing new filetypes involves adding new
+%   cases to the switch-case that ties the label (i.e. first string in the
+%   filename, which is underscore "_" separated) to the correct steps for
+%   processing. For example, if you are attempting to load
+%   AFMData_Experiment1.ibw, then there must be a case for when strSwitch
+%   is "AFMData". That case should (for the first switch-case) determine
+%   which files in the directory are the correct ones to load. Then, the
+%   second switch case requires the user to write the code required to load
+%   at least the following variables: z (Z-Sensor [m]), d (Deflection [m]),
+%   r_tip (Tip Size, [m]; Note: this can also be cone angle [deg] for cone
+%   tips, but for simplicity the variable should still be named "r_tip"),
+%   nu_sample (Poisson's ratio for the sample if known, if not set to 0.5
+%   for incompressible), k_cantilever (stiffness of the cantilever [N/m]),
+%   t (time array [s]), dt (timestep [s]), and N_sam (Number of samples in
+%   the t, z, and d arrays, used for bookkeeping). These variables must be
+%   stored in rows (one for each file) in a structure named "dataStruct".
+%   The file will then organize and clean up the input data, find the
+%   region of interest for fitting, and also perform averaging operations
+%   for all of the files that roughly share an approach velocity. The
+%   original data is kept in the first 1-N rows (where N is the number of
+%   files provided), and the new "averaged" datasets are stored at the END
+%   of dataStruct. There is one row for each approach velocity detected. 
 
 % Default values
 includeRetract = 0;             % Include data from the retract curve
@@ -13,20 +34,22 @@ removeNegatives = 1;            % Remove negative values in the data stream
 
 % Read varargin values
 if ~isempty(varargin)
-    for i = 1:length(varargin)
-        switch(i)
-            case 1
-                includeRetract = cell2mat(varargin{i});
-            case 2
-                filterType = string(varargin{i});
-            case 3
-                N = cell2mat(varargin{i});
-            case 4
-                cutoff_Hz = cell2mat(varargin{i});
-            case 5
-                findRep = string(varargin{i});
-            case 6
-                removeNegatives = cell2mat(varargin{i});
+    if ~isa(varargin{1},'struct')
+        error('You can only pass a STRUCT containing settings to LoadAFMData(). Please verify you have done so, because the type does not appear to be "struct".');
+    else
+        % Load the settings
+        inputSettings = varargin{1};
+        
+        % Load mandatory settings
+        includeRetract = inputSettings.includeRetract;
+        filterType = inputSettings.filterType;
+        findRep = inputSettings.findRep;
+        removeNegatives = inputSettings.removeNegatives;
+        
+        % Load conditional settings
+        if strcmpi(filterType,'butter')
+            N = inputSettings.N;
+            cutoff_Hz = inputSettings.cutoff_Hz;
         end
     end
 end
@@ -42,10 +65,6 @@ FilesCheck(toRemove) = [];
 toRemove = find(~endsWith({FilesCheck.name}, {'.ibw','.txt','.spm','.mat','.csv'}));
 FilesCheck(toRemove) = [];
 
-% Remove Previous Results from the count
-toRemove = find(contains({FilesCheck.name}, {'FitParams'}));
-FilesCheck(toRemove) = [];
-
 toRemove = find(contains({FilesCheck.name}, {'settingsStruct','Settings'}));
 FilesCheck(toRemove) = [];
 
@@ -58,10 +77,10 @@ end
 
 if exist('tempLabels','var')
     if length(unique(tempLabels)) > 1
-        error('ERROR: Attempt to pass multiple experiments into the script has FAILED. Please ensure only one experiment label is used in this directory.');
+        error('ERROR: Attempted to pass previous fit results as input. Please ensure only data is stored in this directory.');
     end
 else
-    error('ERROR: No experiment files found! Please ensure you have selected the correct directory.');
+    error('ERROR: No valid AFM files found! Please ensure you have selected the correct directory, and that LoadAFMData contains a case describing how to load that filetype.');
 end
 
 if length(FilesCheck) > 1
@@ -135,13 +154,15 @@ else
     end
 end
 
-% uniqueVelocities = unique(v_approach);
+% Initialize our output structure
 dataStruct = struct;
 
 % Remove the files we don't care about
 FilesRemove=(~ismember({Files.name},{FilesCheck.name}));
 Files(FilesRemove) = [];
 
+% Loop through the files and proceed with loading, parsing, and calculation
+% for each one.
 for k = 1:length(Files)
     FileNames = Files(k).name;
     FileInfo = strsplit(FileNames, {'_' '.'},'CollapseDelimiters',true);
@@ -153,6 +174,15 @@ for k = 1:length(Files)
 
     switch lower(strSwitch)
         case lower('FD')
+            % This case shows the steps used to load .ibw files from an
+            % MFP3D running the Asylum AFM software. The file header is
+            % read into headerValue and all of the relevant settings are
+            % extracted from there. The actual data itself relies on the
+            % function IBWread to load the AFM experiment observables. Note
+            % that IBWread() was NOT created by the authors of this
+            % repository/manuscript. A license for that script is included
+            % in this directory, and named IBWread_license.txt. Credit goes
+            % to Jakub Bialek (2009).
             RawData = IBWread([Files(k).folder '/' Files(k).name]);
             [headerValue,~] = strsplit(RawData.WaveNotes,'\r',...
             'DelimiterType','RegularExpression');
@@ -192,6 +222,13 @@ for k = 1:length(Files)
             dataStruct(k).t = dataStruct(k).dt.*((1:size(dataStruct(k).d))-1)';
     
         case lower('TestCondition')
+            % This case is for loading the "TestCondition" simulation files
+            % which were generated for testing the code bases. The files
+            % have a regular, relatively simple format and have two
+            % separate .mat files for each: one contains the data from the
+            % simulation (loaded here into RawData), and the other is a
+            % settings file (used to perform the simulation, stored here in
+            % settingsData).
             RawData = load([Files(k).folder '/' Files(k).name],'z','d','t','F');
                         
             settingsCheck=dir([pathname '/*.*']);
@@ -243,6 +280,10 @@ for k = 1:length(Files)
     if ~isrow(dataStruct(k).d) dataStruct(k).d = dataStruct(k).d'; end
     if ~isrow(dataStruct(k).t) dataStruct(k).t = dataStruct(k).t'; end
     
+    % Trim the data. If we include the retract portion of the dataset, then
+    % we will go until the applied force detected is negative. If it is not
+    % included, we end at the point of maximum z-sensor (maximum
+    % deformation condition).
     if ~includeRetract
         dataStruct(k).z_approach = dataStruct(k).z(1:z_max_ind);
         dataStruct(k).d_approach = dataStruct(k).d(1:z_max_ind);
@@ -260,7 +301,8 @@ for k = 1:length(Files)
         dataStruct(k).d_approach = dataStruct(k).d(1:z_max_ind);
         dataStruct(k).t_approach = dataStruct(k).t(1:z_max_ind);
     end
-
+    
+    % Give the user feedback, if they weren't aware the file was short.
     if numel(dataStruct(k).z_approach) <= 100
         fprintf('\nWarning: There is a file with very few (<100) z-sensor\ndatapoints in the approach phase:\n%s\n\n',Files(k).name);
     end    
@@ -355,10 +397,12 @@ for k = 1:length(Files)
         
     end
     
+    % Correct the z-sensor data
     dataStruct(k).z_full_corrected = dataStruct(k).z - ...
         dataStruct(k).z_approach(dSmoothMin) + ...
         dataStruct(k).d_corrected(dSmoothMin);
 
+    % Store our detected offsets
     dataStruct(k).d0 = dataStruct(k).d_corrected(dSmoothMin);
     dataStruct(k).z0 = dataStruct(k).z_corrected(dSmoothMin);
     
@@ -368,24 +412,31 @@ for k = 1:length(Files)
     dataStruct(k).d_smooth = d_smooth;
     dataStruct(k).z_smooth = z_smooth;
     dataStruct(k).h = (dataStruct(k).z(1:z_max_ind) - dataStruct(k).z0)...
-        - (dataStruct(k).d(1:z_max_ind) - dataStruct(k).d0); % Calculate Indentation
+        - (dataStruct(k).d(1:z_max_ind) - dataStruct(k).d0);
     
-    % Get Repulsive Portion of the Data
+    % Get Repulsive Force Application Portion of the Data
     n_offset = length(dataStruct(k).d_corrected(dSmoothMin:z_max_ind));
     n_offset_smooth = length(dataStruct(k).d_corrected(dSmoothMin:(z_max_ind-delay)));
     dt = dataStruct(k).dt;
     
+    % Create a "clean" repulsive time array
     t_rep = linspace(0,(n_offset-1)*dt,n_offset);
     t_rep_smooth = linspace(0,(n_offset_smooth-1)*dt,n_offset_smooth);
 
+    % Store the repulsive z-sensor and deflection for normal and smooth
+    % cases.
     z_rep = dataStruct(k).z_corrected(dSmoothMin:end);
     d_rep = dataStruct(k).d_corrected(dSmoothMin:end);
     z_rep_smooth = dataStruct(k).z_smooth(dSmoothMin:end);
     d_rep_smooth = dataStruct(k).d_smooth(dSmoothMin:end);
     
+    % Store the tip position
     tip_rep = d_rep;
     tip_rep_smooth = d_rep_smooth;
     
+    % Search for the repulsive portion of the data starting from either the
+    % first index and moving to the end ('forward') or starting at the end
+    % and walking backward ('reverse').
     if strcmp(findRep,'forward')
         tip_rep_pos = find(tip_rep>0,1);                                   % Find first position above 0
         if isempty(tip_rep_pos) || tip_rep_pos == 0
@@ -408,6 +459,7 @@ for k = 1:length(Files)
         end
     end
     
+    % Store the repulsive force application portion of the dataset.
     dataStruct(k).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos);
     dataStruct(k).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos);
     dataStruct(k).d_r = d_rep(tip_rep_pos:end) - d_rep(tip_rep_pos);
@@ -417,6 +469,11 @@ for k = 1:length(Files)
     
     dataStruct(k).tip_rep_pos = tip_rep_pos;
     dataStruct(k).tip_rep_pos_smooth = tip_rep_pos_smooth;
+    
+    % Store for benchmarking later. This will help us decide which region
+    % of the curves we can actually "average" together, since we want to
+    % use data where all files that are averaged have some contribution
+    % (i.e. where they overlap).
     tip_rep_pos_all(k) = tip_rep_pos;
     dSmoothMinAll(k) = dSmoothMin;
     
@@ -427,6 +484,7 @@ for k = 1:length(Files)
     dataStruct(k).F_r_smooth = dataStruct(k).d_r_smooth .* k_cantilever(k); % Calculate Smooth Force
     dataStruct(k).h_r_smooth = dataStruct(k).z_r_smooth - dataStruct(k).d_r_smooth; % Calculate Smooth Indentation
     
+    % Store our critical indices
     dataStruct(k).z_max_ind = z_max_ind;
     dataStruct(k).z_max_ind_smooth = z_max_ind-delay;
     dataStruct(k).dSmoothMin = dSmoothMin;
@@ -697,6 +755,8 @@ else
     dataStruct(length(Files)+1).d_average = dataStruct(1).d_corrected;
     dataStruct(length(Files)+1).t_average = dataStruct(1).t_approach;
     dataStruct(length(Files)+1).dt = dataStruct(1).dt;
+    r_tip_array(1) = (cell2mat({dataStruct(1).r_tip}));
+    nu_sample_array(1) = (cell2mat({dataStruct(1).nu_sample}));
 end
 
 % Pre-Processing for Averaged Data of all load levels.

@@ -68,13 +68,13 @@ else
 end
 
 % Calculate the action integral quantity
-convData = [];
+convData = zeros(size(diracArray));
 startInd = find(diracArray);
 endInd = horzcat(find(diracArray)-1,numel(diracArray));
 endInd(1) = [];
 for i = 1:length(startInd)
     temp = convnfft(indentation(startInd(i):endInd(i)).^(beta),Q(startInd(i):endInd(i)),'full');
-    convData = horzcat(convData, temp(1:(1+endInd(i)-startInd(i))));
+    convData(startInd(i):endInd(i)) = temp(1:(1+endInd(i)-startInd(i)));
 end
 
 % Trim the dataset to the region of interest, since the convolution gives

@@ -28,7 +28,7 @@ for i_dir = 1:length(Folders)
     clearvars -except i_dir Folders originalPath
     close all
     clc
-    fprintf('Analyzing Directory #%d\n',i_dir);
+    fprintf('Analyzing Directory #%d of %d\n',i_dir,length(Folders));
     
     % Use the current 
     path = Folders{i_dir};
@@ -131,7 +131,7 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'nelder-mead';             % Fit using Nelder-Mead Simplex
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 200;                 % Use 200 random initializations
@@ -199,7 +199,7 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'annealing';               % Fit using Simulated Annealing
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 5;                   % Use 5 random initializations
@@ -267,7 +267,7 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'nls';                     % Fit using lsqcurvefit
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 3;                     % Fit iteratively for up to 3 elements
+    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 200;                 % Use 200 random initializations

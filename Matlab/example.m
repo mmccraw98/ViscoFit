@@ -54,7 +54,7 @@ for i_dir = 1:length(Folders)
     loadDataSettings  = struct();
     
     % Required Settings:
-    loadDataSettings.includeRetract = 1;             % Include data from the retract curve
+    loadDataSettings.includeRetract = 0;             % Don't include data from the retract curve
     loadDataSettings.filterType = 'none';            % Choose the filter used to smooth data
     loadDataSettings.findRep = 'forward';            % Search direction for the repulsive region
     loadDataSettings.removeNegatives = 1;            % Remove negative values in the data stream

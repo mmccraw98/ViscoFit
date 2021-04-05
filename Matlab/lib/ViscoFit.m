@@ -474,13 +474,10 @@ classdef ViscoFit
             switch model
                 case 'maxwell'
                     objFunc = @obj.SSE_Maxwell;
-                    modelFile = 'LR_Maxwell.m';
                 case 'voigt'
                     objFunc = @obj.SSE_Voigt;
-                    modelFile = 'LR_Voigt.m';
                 case 'plr'
                     objFunc = @obj.SSE_PLR;
-                    modelFile = 'LR_PLR.m';
                     % The storage roster for plr is different, and requires
                     % the second index to maintain consistency. Thus, we
                     % have to manually force the second term to be fit by
@@ -490,7 +487,6 @@ classdef ViscoFit
                     fitStruct.fluidSetting = fluidSetting;
                 case 'custom'
                     objFunc = @obj.customFunc;
-                    modelFile = 'customFunc.m';
                 otherwise
                     error('Your chosen solver-model combination is not implemented yet.');
             end
@@ -506,18 +502,16 @@ classdef ViscoFit
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
                 % Make a fresh pool
-                poolobj = parpool('IdleTimeout', Inf);
-            else
-                % Remove the old pool
-                poolobj = gcp('nocreate');
-                delete(poolobj);
+                poolobj = parpool('IdleTimeout', 120);
                 
-                % Make a fresh pool
-                poolobj = parpool('IdleTimeout', Inf);
+                % Send the class to the workers
+                addAttachedFiles(poolobj, {'ViscoFit.m','LR_Maxwell.m','LR_Voigt.m','LR_PLR.m'})
+                % Note, you should send the *.m file associated with a custom
+                % solver here, as well.
+            else
+                % Get the current pool
+                poolobj = gcp('nocreate');
             end
-            
-            % Send the class to the workers
-            addAttachedFiles(poolobj, {'ViscoFit.m',modelFile})
 
             % Start the timer
             tic;
@@ -865,9 +859,7 @@ classdef ViscoFit
                 end
                 
             end % End Iterative Term Introduction Loop
-            
-            delete(poolobj);
-            
+                        
         end % End fitData()
         
         function fitStruct = fitMap(obj, varargin)
@@ -943,13 +935,10 @@ classdef ViscoFit
             switch model
                 case 'maxwell'
                     objFuncMap = @obj.SSE_Maxwell_Map;
-                    modelFile = 'LR_Maxwell.m';
                 case 'voigt'
                     objFuncMap = @obj.SSE_Voigt_Map;
-                    modelFile = 'LR_Voigt.m';
                 case 'plr'
                     objFuncMap = @obj.SSE_PLR_Map;
-                    modelFile = 'LR_PLR.m';
                     % The storage roster for plr is different, and requires
                     % the second index to maintain consistency. Thus, we
                     % have to manually force the second term to be fit by
@@ -959,7 +948,6 @@ classdef ViscoFit
                     fitStruct.fluidSetting = fluidSetting;
                 case 'custom'
                     objFuncMap = @obj.customFunc_Map;
-                    modelFile = 'customFunc.m';
                 otherwise
                     error('Your chosen solver-model combination is not implemented yet.');
             end
@@ -985,19 +973,15 @@ classdef ViscoFit
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
                 % Make a fresh pool
-                poolobj = parpool('IdleTimeout', Inf);
-            else
-                % Remove the old pool
-                poolobj = gcp('nocreate');
-                delete(poolobj);
+                poolobj = parpool('IdleTimeout', 120);
                 
-                % Make a fresh pool
-                poolobj = parpool('IdleTimeout', Inf);
+                % Send the class to the workers
+                addAttachedFiles(poolobj, {'ViscoFit.m','LR_Maxwell.m','LR_Voigt.m','LR_PLR.m'})
+            else
+                % Get the current pool
+                poolobj = gcp('nocreate');
             end
             
-            % Send the class to the workers
-            addAttachedFiles(poolobj, {'ViscoFit.m',modelFile})
-
             % Start the timer
             tic;
             
@@ -1343,9 +1327,7 @@ classdef ViscoFit
                 fitStruct.fitTime{i} = fitTimeMap;
             
             end % End Iterative Term Introduction Loop
-                
-            delete(poolobj);
-            
+                            
         end % End fitMap()
         
     end % End Methods

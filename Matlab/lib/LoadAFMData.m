@@ -564,7 +564,7 @@ if length(Files) > 1
                 forceLimits(k) = max(di(k,:));
                 timeLimits(k) = max(tempz);
             else
-                dataLengths(k) = find(isnan(zi(k,:)),2,'first');
+                dataLengths(k) = find(isnan(zi(k,:)),1,'first');
                 forceLimits(k) = max(di(k,:));
                 timeLimits(k) = max(tempz);
             end
@@ -666,7 +666,7 @@ if length(Files) > 1
                             forceLimits = horzcat(forceLimits, max(di(:,end)));
                             timeLimits = horzcat(timeLimits, max(tempz));
                         else
-                            dataLengths = horzcat(dataLengths, find(isnan(zi(:,end)),2,'first'));
+                            dataLengths = horzcat(dataLengths, find(isnan(zi(:,end)),1,'first'));
                             forceLimits = horzcat(forceLimits, max(di(:,end)));
                             timeLimits = horzcat(timeLimits, max(tempz));
                         end

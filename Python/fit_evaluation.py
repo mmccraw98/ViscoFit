@@ -57,8 +57,8 @@ for i, test_cond in enumerate(test_condition_dirs):
     # compare the retardance_params and retardance_fit
     gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'))
 
-    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'relaxance_fit.pkl'))
-    gmp.safesave(retardance_fit, os.path.join(test_cond, 'retardance_fit.pkl'))
+    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'))
+    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'))
 
     # stop the timers
     gmp.toc()

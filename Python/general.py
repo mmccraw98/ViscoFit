@@ -141,24 +141,26 @@ def get_folders(dir):
     return [f.path for f in os.scandir(dir) if f.is_dir()]
 
 
-def load(path, override_extension=None):
+def load(path, required_extension=None):
     '''
     loads data from a number of formats into python
     :param path: str path to thing being loaded in
+    :param required_extension: str required extension for the file(s) to be loaded
+    i.e. only load files with the required_extension
     :return: the data
     '''
     if not os.path.isfile(path):
         exit('tc_data does not exist')
     file_name = os.path.basename(path)  # tc_data name
     extension = file_name.split(sep='.')[-1]
-    if extension == 'csv' or override_extension == 'csv':
+    if extension == 'csv' or required_extension == 'csv':
         data = read_csv(path)
-    elif extension == 'xlsx' or override_extension == 'xlsx':
+    elif extension == 'xlsx' or required_extension == 'xlsx':
         data = read_excel(path, engine='openpyxl')
-    elif extension == 'txt' or override_extension == 'txt':
+    elif extension == 'txt' or required_extension == 'txt':
         with open(path, 'r') as f:
             data = f.read()
-    elif extension == 'pkl' or override_extension == 'pkl':
+    elif extension == 'pkl' or required_extension == 'pkl':
         with open(path, 'rb') as f:
             data = pickle.load(f)
     else:

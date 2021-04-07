@@ -2,6 +2,7 @@ import viscofit as vf
 import general as gmp
 import numpy as np
 import os
+from time import time
 
 # set the root for the data
 root = os.path.join('data', 'ViscoVerification-MultiLoadLevel-ExcelConvert')
@@ -43,25 +44,60 @@ for i, test_cond in enumerate(test_condition_dirs):
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
 
     # start the timer
-    gmp.tic()
+    start = time()
 
     # initialize the fit for the single test condition
+    print('---Maxwell')
     maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)
+    print('--Voigt')
     voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
+    print('--Power Law')
+    power = vf.powerLawModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
     # perform the fits
-    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
-    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)['final_params']
+    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    power_fit = power.fit(maxiter=1000, num_attempts=100)
+
+    import matplotlib.pyplot as plt
+    for f_, t_, h_, r_ in zip(fs, ts, hs, rs):
+        plt.plot(vf.forceMaxwell_LeeRadok(relaxance_fit['model_data']['final_params'], t_, h_, r_), label='pred', linestyle='--')
+        plt.plot(vf.forceMaxwell_LeeRadok(relaxance_fit['fluidity_data']['final_params'], t_, h_, r_), label='pred_fluid', linestyle=':')
+        plt.plot(f, label='real', linestyle='-')
+    plt.title('maxwell force comparison')
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    for f_, t_, h_, r_ in zip(fs, ts, hs, rs):
+        plt.plot(vf.indentationKelvinVoigt_LeeRadok(retardance_fit['model_data']['final_params'], t_, f_, r_), label='pred', linestyle='--')
+        plt.plot(vf.indentationKelvinVoigt_LeeRadok(retardance_fit['fluidity_data']['final_params'], t_, f_, r_), label='pred_fluid', linestyle=':')
+        plt.plot(h, label='real', linestyle='-')
+    plt.title('voigt indentation comparison')
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    for f_, t_, h_, r_ in zip(fs, ts, hs, rs):
+        plt.plot(vf.forcePowerLaw_LeeRadok(power_fit['final_params'], t_, h_, r_), label='pred', linestyle='--')
+        plt.plot(f, label='real', linestyle='-')
+    plt.title('power force comparison')
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    quit()
 
     # compare the relaxance_params and relaxance_fit
     # compare the retardance_params and retardance_fit
-    gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'))
+    gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'), overwrite=True)
 
-    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'))
-    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'))
+    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'), overwrite=True)
+    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'), overwrite=True)
+    gmp.safesave(power_fit, os.path.join(test_cond, 'simultaneous_power_fit.pkl'), overwrite=True)
 
     # stop the timers
-    gmp.toc()
+    print('Time Elapsed: {}s'.format(time() - start))
 
     # get the error in the harmonic quantities @TODO
 

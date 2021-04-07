@@ -47,16 +47,16 @@ for i, test_cond in enumerate(test_condition_dirs):
     start = time()
 
     # initialize the fit for the single test condition
-    print('---Maxwell')
     maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)
-    print('--Voigt')
     voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
-    print('--Power Law')
     power = vf.powerLawModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
     # perform the fits
+    print('---Maxwell')
     relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    print('--Voigt')
     retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    print('--Power Law')
     power_fit = power.fit(maxiter=1000, num_attempts=100)
 
     import matplotlib.pyplot as plt

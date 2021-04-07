@@ -54,7 +54,7 @@ def indentationKelvinVoigt_LeeRadok(model_params, time, force, radius):
         retardance = sum(model_params[1::2] / model_params[2::2] * exp(- time_matrix / model_params[2::2]), axis=1)
         retardance[0] += (model_params[0]) / (time[1] - time[0])  # add the delta function to the relaxances
         # must divide by dt since the integral of dirac delta MUST be 1 by definiton
-    return (3 / (8 * sqrt(radius)) * convolve(force, retardance, mode='full')[:time.size] * (time[1] - time[0])) ** (2 / 3)
+    return (3 / (16 * sqrt(radius)) * convolve(force, retardance, mode='full')[:time.size] * (time[1] - time[0])) ** (2 / 3)
 
 
 def forcePowerLaw_LeeRadok(model_params, time, indentation, radius):
@@ -688,7 +688,7 @@ class kelvinVoigtModel():
         # calculate the prediction for d^3/2 according to the lee and radok viscoelastic contact mechanics for each experiment
         # and convert to a single row vector for easier comparison with the specified target d^3/2
         # d( t )^3/2 = 3 / ( 8 * sqrt( R ) ) * integral_0_t( U( t - u ) * F( u ) ) du
-        return [3 / (sqrt(r) * 8) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
+        return [3 / (sqrt(r) * 16) * convolve(make_retardance(t, dt), f, mode='full')[: t.size] * dt
                 for r, t, dt, f in zip(self.radii, self.time, self.dts, self.force)]
 
     def get_bounds(self, model_size, fluidity=False):

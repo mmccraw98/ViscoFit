@@ -253,8 +253,8 @@ for i_dir = 1:length(Folders)
         set(gca,'xscale','log','yscale','log')
         hold off
     end
-    saveas(resultsFigNelder,[path '\PlotResults-Annealing.jpg']);
-    saveas(resultsFigNelder,[path '\PlotResults-Annealing.fig']);
+    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.jpg']);
+    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.fig']);
     save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
 
     % Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
@@ -321,8 +321,8 @@ for i_dir = 1:length(Folders)
         set(gca,'xscale','log','yscale','log')
         hold off
     end
-    saveas(resultsFigNelder,[path '\PlotResults-NLS.jpg']);
-    saveas(resultsFigNelder,[path '\PlotResults-NLS.fig']);
+    saveas(resultsFigNLS,[path '\PlotResults-NLS.jpg']);
+    saveas(resultsFigNLS,[path '\PlotResults-NLS.fig']);
     save([path '\FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')
     
 end

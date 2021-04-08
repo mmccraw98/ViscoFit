@@ -37,7 +37,7 @@ for i, test_cond in enumerate(test_condition_dirs):
 
         # get the experimental data from the files
         f, z, d, t = data_file['F (N)'], data_file['z (m)'], data_file['d (m)'], data_file['time (s)']
-        mask = np.logical_and(f > 0, np.indices(f.shape) < np.argmax(f))[0]
+        mask = f > 0
         f, z, d, t = f[mask].values, z[mask].values, d[mask].values, t[mask].values
         h = d - z  # calculating the indentation as the difference between the deflection and the z-sensor
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
@@ -63,9 +63,9 @@ for i, test_cond in enumerate(test_condition_dirs):
     # compare the retardance_params and retardance_fit
     gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'), overwrite=True)
 
-    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'), overwrite=True)
-    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'), overwrite=True)
-    gmp.safesave(power_fit, os.path.join(test_cond, 'simultaneous_power_fit.pkl'), overwrite=True)
+    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'retract_simultaneous_relaxance_fit.pkl'), overwrite=True)
+    gmp.safesave(retardance_fit, os.path.join(test_cond, 'retract_simultaneous_retardance_fit.pkl'), overwrite=True)
+    gmp.safesave(power_fit, os.path.join(test_cond, 'retract_simultaneous_power_fit.pkl'), overwrite=True)
 
     # stop the timers
     print('Time Elapsed: {}s'.format(time() - start))

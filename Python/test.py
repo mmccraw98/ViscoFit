@@ -2,7 +2,6 @@ import viscofit as vf
 import general as gmp
 import numpy as np
 import os
-from time import time
 
 # set the root for the data
 root = os.path.join('data', 'ViscoVerification-MultiLoadLevel-ExcelConvert')
@@ -42,34 +41,14 @@ for i, test_cond in enumerate(test_condition_dirs):
         h = d - z  # calculating the indentation as the difference between the deflection and the z-sensor
         R = float(settings_file.split(sep='Radius: ')[1].split(sep=' ')[0])  # load the tip radius
         fs.append(f), hs.append(h), ts.append(t), rs.append(R)
+    break
 
-    # start the timer
-    start = time()
+import matplotlib.pyplot as plt
+params = np.array([1e-6, 1e-5, 1e-3])
+hs = []
+for f, t, r in zip(fs, ts, rs):
+    hs.append(vf.indentationKelvinVoigt_LeeRadok(params, time=t, force=f, radius=r))
 
-    # initialize the fit for the single test condition
-    maxwell = vf.maxwellModel(forces=fs, indentations=hs, times=ts, radii=rs)
-    voigt = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
-    power = vf.powerLawModel(forces=fs, indentations=hs, times=ts, radii=rs)
+norm = vf.kelvinVoigtModel(forces=fs, indentations=hs, times=ts, radii=rs)
 
-    # perform the fits
-    print('---Maxwell')
-    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
-    print('--Voigt')
-    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
-    print('--Power Law')
-    power_fit = power.fit(maxiter=1000, num_attempts=100)
-
-    # compare the relaxance_params and relaxance_fit
-    # compare the retardance_params and retardance_fit
-    gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'), overwrite=True)
-
-    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'), overwrite=True)
-    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'), overwrite=True)
-    gmp.safesave(power_fit, os.path.join(test_cond, 'simultaneous_power_fit.pkl'), overwrite=True)
-
-    # stop the timers
-    print('Time Elapsed: {}s'.format(time() - start))
-
-    # get the error in the harmonic quantities @TODO
-
-    # get the error between the parameters @TODO
+params = norm.fit(maxiter=2, max_model_size=2, fit_sequential=True, num_attempts=2)

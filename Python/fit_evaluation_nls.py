@@ -53,19 +53,19 @@ for i, test_cond in enumerate(test_condition_dirs):
 
     # perform the fits
     print('---Maxwell')
-    relaxance_fit = maxwell.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    relaxance_fit = maxwell.fit_nls(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
     print('--Voigt')
-    retardance_fit = voigt.fit(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
+    retardance_fit = voigt.fit_nls(maxiter=1000, max_model_size=5, fit_sequential=True, num_attempts=100)
     print('--Power Law')
-    power_fit = power.fit(maxiter=1000, num_attempts=100)
+    power_fit = power.fit_nls(maxiter=1000, num_attempts=100)
 
     # compare the relaxance_params and relaxance_fit
     # compare the retardance_params and retardance_fit
     gmp.safesave(relaxance_params, os.path.join(test_cond, 'relaxance_real.pkl'), overwrite=True)
 
-    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'simultaneous_relaxance_fit.pkl'), overwrite=True)
-    gmp.safesave(retardance_fit, os.path.join(test_cond, 'simultaneous_retardance_fit.pkl'), overwrite=True)
-    gmp.safesave(power_fit, os.path.join(test_cond, 'simultaneous_power_fit.pkl'), overwrite=True)
+    gmp.safesave(relaxance_fit, os.path.join(test_cond, 'relaxance_nls_fit.pkl'), overwrite=True)
+    gmp.safesave(retardance_fit, os.path.join(test_cond, 'retardance_nls_fit.pkl'), overwrite=True)
+    gmp.safesave(power_fit, os.path.join(test_cond, 'power_nls_fit.pkl'), overwrite=True)
 
     # stop the timers
     print('Time Elapsed: {}s'.format(time() - start))

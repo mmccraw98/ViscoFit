@@ -211,6 +211,62 @@ classdef ViscoFit
             end
         end % End Maxwell SSE Function
         
+        function [storageMod,lossMod,lossAngle] = harmonics_Maxwell(~,omega,fitStruct)
+            %harmonics_Maxwell Calculate the Viscoelastic Harmonic
+            %Quantities for a given Generalized Maxwell Model Parameter Set
+                %   Calculate the Viscoelastic Storage Modulus, Loss
+                %   Modulus, and Loss Angle (a.k.a., Loss Tangent) for the
+                %   given set of Generalized Maxwell Model parameters
+                %   acquired using the fitData() class function. The
+                %   structure that is provided by the fitData() function
+                %   must be included, in addition to the desired frequency
+                %   array for evaluation.
+                
+            % Make sure we're using the right function
+            if ~strcmpi(fitStruct.model,'maxwell')
+                error('You attempted to pass parameters from a different viscoelastic model to the harmonics_Maxwell function. Please ensure you are passing the correct results.');
+            end
+                
+            % Load the settings we need
+            params = fitStruct.bestParams;
+            elasticSetting = fitStruct.elasticSetting;
+            fluidSetting = fitStruct.fluidSetting;
+            
+            % Make sure our input arrays are the right shape
+            if isrow(params) params = params'; end
+            if ~isrow(omega) omega = omega'; end
+            
+            % Make sure to erase any erroneous value contained within the
+            % elastic parameter slot if there is no elastic term included.
+            if ~elasticSetting
+                params(1) = 0;
+            end
+            
+            % Preallocate arrays/matrices
+            storageMod = zeros(size(omega));
+            lossMod = zeros(size(omega));
+            armMatrix = repmat(params(3:end),1,length(omega));
+            omegaMatrix = repmat(omega,length(params(3:end)),1);
+
+            % Add the appropriate adjustment to the storage and loss moduli
+            % according to the inclusion of steady-state fludity. When
+            % fluidity is present, the elastic term must be included in the
+            % loss modulus, and the storage modulus effects will no longer
+            % be constant across all frequencies.
+            if fluidSetting
+                storageMod = storageMod + (params(1).*(omega.^2).*(params(2).^2))./(1+(omega.^2).*(params(2).^2));
+                lossMod = lossMod + (params(1).*omega.*params(2))./(1+(omega.^2).*(params(2).^2));
+            else
+                storageMod = storageMod + params(1);
+            end
+            
+            % Add the effect of the arms.
+            storageMod = storageMod + sum((armMatrix(3:2:end,:).*(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+            lossMod = lossMod + sum((armMatrix(3:2:end,:).*omegaMatrix.*armMatrix(4:2:end,:))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+            lossAngle = atand(lossMod./storageMod);
+                
+        end % End of the Maxwell Harmonics Calculation Function
+        
         function sse = SSE_Maxwell_Map(obj,params,idx,elasticSetting,fluidSetting)
             %SSE_Maxwell Calculate the SSE for the Maxwell model
             %   Calculate the Sum of Squared Errors for the Generalized
@@ -302,6 +358,65 @@ classdef ViscoFit
                 sse = Inf;
             end
         end % End Voigt SSE Map Function
+        
+        function [storageMod,lossMod,lossAngle] = harmonics_Voigt(~,omega,fitStruct)
+            %harmonics_Voigt Calculate the Viscoelastic Harmonic
+            %Quantities for a given Generalized Voigt Model Parameter Set
+                %   Calculate the Viscoelastic Storage Modulus, Loss
+                %   Modulus, and Loss Angle (a.k.a., Loss Tangent) for the
+                %   given set of Generalized Voigt Model parameters
+                %   acquired using the fitData() class function. The
+                %   structure that is provided by the fitData() function
+                %   must be included, in addition to the desired frequency
+                %   array for evaluation.
+            
+            % Make sure we're using the right function
+            if ~strcmpi(fitStruct.model,'voigt')
+                error('You attempted to pass parameters from a different viscoelastic model to the harmonics_Voigt function. Please ensure you are passing the correct results.');
+            end
+                
+            % Load the settings we need
+            params = fitStruct.bestParams;
+            elasticSetting = fitStruct.elasticSetting;
+            fluidSetting = fitStruct.fluidSetting;
+                
+            % Make sure our input arrays are the right shape
+            if isrow(params) params = params'; end
+            if ~isrow(omega) omega = omega'; end
+            
+            % Make sure to erase any erroneous value contained within the
+            % elastic parameter slot if there is no elastic term included.
+            if ~elasticSetting
+                params(1) = 0;
+            end
+            
+            if ~fluidSetting
+                params(2) = 0;
+            end
+            
+            % Preallocate arrays/matrices
+            storageCompliance = zeros(size(omega));
+            lossCompliance = zeros(size(omega));
+            armMatrix = repmat(params(3:end),1,length(omega));
+            omegaMatrix = repmat(omega,length(params(3:end)),1);
+            
+            % Add the effects of the elastic arm and steady-state fluidity
+            storageCompliance = storageCompliance + params(1);
+            lossCompliance = lossCompliance + params(2)./omega;
+            
+            % Add the effect of the arms.
+            storageCompliance = storageCompliance + sum(armMatrix(3:2:end,:)./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+            lossCompliance = lossCompliance + sum((armMatrix(3:2:end,:).*omegaMatrix.*armMatrix(4:2:end,:))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+
+            % Calculate the absolute modulus
+            absCompliance = sqrt(storageCompliance.^2 + lossCompliance.^2);
+            
+            % Add the effect of the arms.
+            storageMod = storageCompliance./(absCompliance.^2);
+            lossMod = lossCompliance./(absCompliance.^2);
+            lossAngle = atand(lossMod./storageMod);
+
+        end % End of the Voigt Harmonics Calculation Function
         
         function sse = SSE_Voigt_Map(obj,params,idx,elasticSetting,fluidSetting)
             %SSE_Voigt Calculate the SSE for the Voigt model
@@ -412,6 +527,59 @@ classdef ViscoFit
             end
         end % End PLR SSE Map Function
         
+        function [ub,lb] = getParamsCI(~,param_pop,varargin)
+            %getParamsCI Get the Confidence Interval for a Parameter
+            %Population
+            %   Calculates the confidence bounds based upon the
+            %   parameter population provided by the user in param_pop.
+            %   If the user does not specify an accuracy through the
+            %   varargin, the default is used (95% CI) using the
+            %   student-t distribution (two-sided).
+            
+            if ~isempty(varargin)
+                for i = 1:length(varargin)
+                    switch i
+                        case 1
+                            confInt = varargin{i};
+                            if (confInt < 0) || (confInt > 1)
+                                error('You provided an invalid accuracy level specification to getParamsCI(). Ensure your number remains between 0 and 1.')
+                            end
+                        otherwise
+                            error('You have provided too many inputs to getParamsCI() through varargin.');
+                    end
+                end
+            else
+                confInt = 0.95;
+            end
+            
+            % Quickly get our basic parameter population statistics
+            meanPop = mean(param_pop,2);
+            stdPop = std(param_pop,0,2);
+            
+            % Calculate the degrees of freedom in the system: N-p where N
+            % is the number of observations (i.e., parameter sets in the
+            % population) and p (the number of parameters in the model).
+            dof = size(param_pop,2)-size(param_pop,1);
+            
+            % Get the critical values for our bounds. The way this is
+            % written, the user can provide either the upper or lower bound
+            % and still get the right scores. For example, if the user
+            % gives 0.95 (for 95% CI's), the first element of tScores will
+            % be bigger than the second (since the first has an input of
+            % 0.95 and the second has 0.05). The values are then sorted in
+            % increasing order, so the first element is smaller (used for
+            % the lower bound). Alternately, if the user gives 0.05, then
+            % the first element will be smaller than the second. The
+            % absolute value is in place for just this case, as it will
+            % therefore provide 0.05 and 0.95 to the two elements in
+            % tScores.
+            tScores = sort([tinv(abs(confInt),dof) tinv(abs(confInt-1),dof)]);
+            
+            % Calculate the upper and lower bounds, to be returned.
+            lb = meanPop + tScores(1).*stdPop./sqrt(size(param_pop,2));
+            ub = meanPop + tScores(2).*stdPop./sqrt(size(param_pop,2));
+        end
+        
         function fitStruct = fitData(obj, varargin)
             % FITDATA Fit a Viscoelastic Model to the Class Data 
             %   This function takes in a variety of settings in addition to
@@ -498,6 +666,8 @@ classdef ViscoFit
             fitStruct.paramPopulationResiduals = {};
             fitStruct.elasticFitTime = {};
             fitStruct.fitTime = {};
+            fitStruct.upperParamCI = {};
+            fitStruct.lowerParamCI = {};
             
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
@@ -836,6 +1006,9 @@ classdef ViscoFit
                 fitStruct.bestParams = horzcat(fitStruct.bestParams,{beta_dist(:,idx)});
                 fitStruct.paramPopulation = horzcat(fitStruct.paramPopulation,{beta_dist});
                 fitStruct.paramPopulationResiduals = horzcat(fitStruct.paramPopulationResiduals,{residual_dist});
+                [tempub,templb] = obj.getParamsCI(beta_dist,0.95);
+                fitStruct.upperParamCI = horzcat(fitStruct.upperParamCI,{tempub});
+                fitStruct.lowerParamCI = horzcat(fitStruct.lowerParamCI,{templb});
                 
                 % Store the timing for this model configuration fit
                 fitStruct.fitTime = horzcat(fitStruct.fitTime,{postFitting-preFitting});
@@ -997,6 +1170,8 @@ classdef ViscoFit
             bestParamsMap = cell(size(obj.forces_cell));
             paramPopulationMap = cell(size(obj.forces_cell));
             paramPopulationResidualsMap = cell(size(obj.forces_cell));
+            upperParamCIMap = cell(size(obj.forces_cell));
+            lowerParamCIMap = cell(size(obj.forces_cell));
             elasticFitTimeMap = cell(size(obj.forces_cell));
             fitTimeMap = cell(size(obj.forces_cell));
             
@@ -1293,6 +1468,7 @@ classdef ViscoFit
                     bestParamsMap{j} = beta_dist(:,idx);
                     paramPopulationMap{j} = beta_dist;
                     paramPopulationResidualsMap{j} = residual_dist;
+                    [upperParamCIMap{j},lowerParamCIMap{j}] = obj.getParamsCI(beta_dist,0.95);
 
                     % Store the timing for this model configuration fit
                     fitTimeMap{j} = postFitting-preFitting;
@@ -1323,6 +1499,9 @@ classdef ViscoFit
                 fitStruct.bestParams{i} = bestParamsMap;
                 fitStruct.paramPopulation{i} = paramPopulationMap;
                 fitStruct.paramPopulationResiduals{i} = paramPopulationResidualsMap;
+                fitStruct.upperParamCI{i} = upperParamCIMap;
+                fitStruct.lowerParamCI{i} = lowerParamCIMap;
+                
                 fitStruct.elasticFitTime{i} = elasticFitTimeMap;
                 fitStruct.fitTime{i} = fitTimeMap;
             

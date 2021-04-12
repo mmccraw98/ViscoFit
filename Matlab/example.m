@@ -54,7 +54,7 @@ for i_dir = 1:length(Folders)
     loadDataSettings  = struct();
     
     % Required Settings:
-    loadDataSettings.includeRetract = 0;             % Don't include data from the retract curve
+    loadDataSettings.includeRetract = 1;             % Don't include data from the retract curve
     loadDataSettings.filterType = 'none';            % Choose the filter used to smooth data
     loadDataSettings.findRep = 'forward';            % Search direction for the repulsive region
     loadDataSettings.removeNegatives = 1;            % Remove negative values in the data stream
@@ -203,7 +203,7 @@ for i_dir = 1:length(Folders)
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 5;                   % Use 5 random initializations
-    fitSettings.n_fitIterations = 1e3;              % No. of iterations for solver
+    fitSettings.n_fitIterations = 5e2;              % No. of iterations for solver
     maxwellFit_Anneal = visco.fitData(fitSettings);
 
     % Test the Voigt

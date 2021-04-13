@@ -1,4 +1,4 @@
-from numpy import array, sum, sqrt, convolve, exp, ones, zeros, insert, concatenate, argmin, diff, var, seterr, inf, stack, apply_along_axis
+from numpy import array, sum, sqrt, convolve, exp, ones, zeros, insert, concatenate, argmin, diff, var, seterr, inf, stack, std, mean
 from numpy.random import uniform
 from scipy.optimize import minimize, dual_annealing, least_squares
 from general import tic, toc, row2mat
@@ -60,7 +60,7 @@ def indentationKelvinVoigt_LeeRadok(model_params, time, force, radius):
 def forcePowerLaw_LeeRadok(model_params, time, indentation, radius):
     '''
     calculates the force respones for a generalized maxwell model according to the lee and radok contact mechanics formulation
-    :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power law exponent (a) in the following form
+    :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power_simul law exponent (a) in the following form
     array([E0, a])
     :param time: (n,) numpy array time signal of the loading cycle
     :param indentation: (n,) numpy array indentation signal of the loading cycle
@@ -70,6 +70,22 @@ def forcePowerLaw_LeeRadok(model_params, time, indentation, radius):
     scaled_indentations_deriv = concatenate(([0], diff(indentation ** (3 / 2)))) / (time[1] - time[0])
     relaxation = model_params[0] * (1 + time / (time[1] - time[0])) ** (- model_params[1])
     return 16 * sqrt(radius) / 3 * convolve(relaxation, scaled_indentations_deriv, mode='full')[:time.size] * (time[1] - time[0])
+
+
+def storage_loss_compliance(model_params, w):
+    if model_params.size % 2 == 0:  # fluidity case
+        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=1)
+        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=1) + model_params[1] / w
+    else:  # non fluidity case
+        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+    return stor, loss
+
+
+def storage_loss_moduli(model_params, w):
+    stor = model_params[0] + sum(model_params[1::2]) - sum([G / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+    loss = sum([G * w * T / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+    return stor, loss
 
 
 class experimentalmaxwellModel():
@@ -469,232 +485,84 @@ class maxwellModel():
             return 1e20 * sse
         return sse
 
-    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
+    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5, solver='nelder', save_global=False):
         '''
-        fit experimental force distance curve(s) to maxwell model of arbitrary size using a nelder-mead simplex which
-        typically gives good fits rather quickly
+        fit experimental force distance curve(s) to maxwell model of arbitrary size
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
         :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
         :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
         :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
         will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
+        :param solver: str type of solving method to be used:
+                        nelder: uses nelder-mead simplex method (typically fast and works well)
+                        anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
+                        nls: uses least-squares method (typically fast, but gives a poor fit)
+        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return dict: {non_fluidity_fit: {best_fit (np array of the best fitting parameters),
+                                          time (float time taken to generate the best fit),
+                                          conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                                          cost (float final cost of the fit),
+                                          global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)},
+                       fluidity_fit: {best_fit (np array of the best fitting parameters),
+                                      time (float time taken to generate the best fit),
+                                      conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                                      cost (float final cost of the fit),
+                                      global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}}
+        BEST_FIT: [Ge, G1, T1, ... Gn, Tn]
         '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                                   method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                  'maxfev': maxiter,
-                                                                  'xatol': 1e-60,
-                                                                  'fatol': 1e-60})
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')
+        if solver not in ['nelder', 'anneal', 'nls']:
+            exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
 
+        def do_fit(solver, fluidity, save_global):
+            global_data = []
+            best_fits = []
+            for model_size in range(1, max_model_size + 1):  # loop over model sizes
+                print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
+                data = []  # store the data for the current fitting attempts
+                lower_bounds, upper_bounds = self.get_bounds(model_size,
+                                                             fluidity=fluidity)  # get lower and upper bounds
+                bound = array(
+                    (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
+                for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
+                    guess = self.get_initial_guess(model_size, fluidity=fluidity)  # get an initial guess
+                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
+                        guess[: 2 * (model_size - 1) + 1] = best_fits[-1][0][: 2 * (model_size - 1) + 1]
+                    tic()
+                    if solver == 'nelder':
+                        results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead',
+                                           options={'maxiter': maxiter,
+                                                    'maxfev': maxiter,
+                                                    'xatol': 1e-60,
+                                                    'fatol': 1e-60})
+                    elif solver == 'anneal':
+                        results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
+                                                 local_search_options={'method': 'nelder-mead'}, x0=guess)
+                    else:
+                        results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
+                                                args=(lower_bounds, upper_bounds), max_nfev=maxiter)
+                    data.append([results.x, results.fun, toc(True),
+                                 guess])  # save the final params, their cost, the fit time, initial param guess
+                temp = array(data, dtype='object')
+                best_fit_params = temp[:, 0][argmin(temp[:, 1])]
+                time = sum(temp[:, 2])
+                right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
+                confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
+                cost = min(temp[:, 1])
+                if save_global:
+                    for fit in data:
+                        global_data.append(fit)
+                best_fits.append([best_fit_params, time, confidence_bounds, cost])
+            best_fits = array(best_fits, dtype='object')
+            best_fit = best_fits[argmin(best_fits[:, 1])]
+            if save_global:
+                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3],
+                        'global_data': global_data}
+            else:
+                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3]}
 
-
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                                   method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                  'maxfev': maxiter,
-                                                                  'xatol': 1e-60,
-                                                                  'fatol': 1e-60})
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                                  var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data,
-                              dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[
-            argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
-
-    def fit_slow(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to maxwell model of arbitrary size using simulated annealing with
-        a nelder-mead simplex local search, this is very computationally costly and will take a very long time
-        though typically results in much better fits
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
-        :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
-        '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            bound = array(
-                (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                         local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            bound = array(
-                (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                         local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                                  var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data,
-                              dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[
-            argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
-
-    def fit_nls(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to maxwell model of arbitrary size using nonlinear least squares, it isn't amazing
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
-        :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
-        '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15, args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
-                                        args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                                  var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data,
-                              dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[
-            argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
+        non_fluidity_fit = do_fit(solver=solver, fluidity=False, save_global=save_global)
+        fluidity_fit = do_fit(solver=solver, fluidity=True, save_global=save_global)
+        return {'non_fluidity_fit': non_fluidity_fit, 'fluidity_fit': fluidity_fit}
 
 
 class kelvinVoigtModel():
@@ -823,227 +691,78 @@ class kelvinVoigtModel():
             return 1e20 * sse
         return sse
 
-    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
+    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5, solver='nelder', save_global=False):
         '''
-        fit experimental force distance curve(s) to kelvin-voigt model of arbitrary size using a nelder-mead simplex which
-        typically gives good fits rather quickly
+        fit experimental force distance curve(s) to kelvin-voigt model of arbitrary size
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
         :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
         :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
         :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
         will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
+        :param solver: str type of solving method to be used:
+                        nelder: uses nelder-mead simplex method (typically fast and works well)
+                        anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
+                        nls: uses least-squares method (typically fast, but gives a poor fit)
+        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return dict: {non_fluidity_fit: {best_fit (np array of the best fitting parameters),
+                                          time (float time taken to generate the best fit),
+                                          conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                                          cost (float final cost of the fit),
+                                          global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)},
+                       fluidity_fit: {best_fit (np array of the best fitting parameters),
+                                      time (float time taken to generate the best fit),
+                                      conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                                      cost (float final cost of the fit),
+                                      global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}}
+        BEST_FIT: [Jg, J1, T1, ... Jn, Tn]
+        BEST_FIT: fluidity [Jg, Phi_f, J1, T1, ... Jn, Tn]
         '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                                   method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                  'maxfev': maxiter,
-                                                                  'xatol': 1e-60,
-                                                                  'fatol': 1e-60})
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
+        if solver not in ['nelder', 'anneal', 'nls']:
+            exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
 
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                                   method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                  'maxfev': maxiter,
-                                                                  'xatol': 1e-60,
-                                                                  'fatol': 1e-60})
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                         var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
+        def do_fit(solver, fluidity, save_global):
+            global_data = []
+            best_fits = []
+            for model_size in range(1, max_model_size + 1):  # loop over model sizes
+                print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
+                data = []  # store the data for the current fitting attempts
+                lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=fluidity)  # get lower and upper bounds
+                bound = array((lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
+                for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
+                    guess = self.get_initial_guess(model_size, fluidity=fluidity)  # get an initial guess
+                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
+                        guess[: 2 * (model_size - 1) + 1] = best_fits[-1][0][: 2 * (model_size - 1) + 1]
+                    tic()
+                    if solver == 'nelder':
+                        results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead', options={'maxiter': maxiter,
+                                                                      'maxfev': maxiter,
+                                                                      'xatol': 1e-60,
+                                                                      'fatol': 1e-60})
+                    elif solver == 'anneal':
+                        results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter, local_search_options={'method': 'nelder-mead'}, x0=guess)
+                    else:
+                        results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15, args=(lower_bounds, upper_bounds), max_nfev=maxiter)
+                    data.append([results.x, results.fun, toc(True), guess])  # save the final params, their cost, the fit time, initial param guess
+                temp = array(data, dtype='object')
+                best_fit_params = temp[:, 0][argmin(temp[:, 1])]
+                time = sum(temp[:, 2])
+                right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
+                confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
+                cost = min(temp[:, 1])
+                if save_global:
+                    for fit in data:
+                        global_data.append(fit)
+                best_fits.append([best_fit_params, time, confidence_bounds, cost])
+            best_fits = array(best_fits, dtype='object')
+            best_fit = best_fits[argmin(best_fits[:, 1])]
+            if save_global:
+                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3], 'global_data': global_data}
+            else:
+                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3]}
 
-    def fit_slow(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to kelvin-voigt model of arbitrary size using simulated annealing with
-        a nelder-mead simplex local search, this is very computationally costly and will take a very long time
-        though typically results in much better fits
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
-        :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
-        '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            bound = array(
-                (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                         local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            bound = array(
-                (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                         local_search_options={'method': 'nelder-mead'}, x0=guess)
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                                  var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data,
-                              dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[
-            argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
-
-    def fit_nls(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to kelvin-voigt model of arbitrary size using nonlinear least squares, it isn't amazing
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
-        :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {'data' (data for the non-fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                        'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                        'time': time, (float of time taken to generate best fit),
-                                                                        'trial_variance': variance of the fit attempts which generated the final fit, (float)},
-                       'fluidity_data' (data for the fluidity model): {'final_params': best_fit, (numpy array of final best fit params),
-                                                                       'final_cost': final_cost, (float of final cost for the best fit params),
-                                                                       'time': time, (float of time taken to generate best fit),
-                                                                       'trial_variance': variance of the fit attempts which generated the final fit, (float)}}
-        '''
-        data = []  # store the global data for the fits
-        # attempt a trial of fits for each hypothetical model in the desired range of model sizes
-        tic()  # start the timer for the trial
-        for model_size in range(1, max_model_size + 1):  # fit without fluidity
-            print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=False)  # get lower and upper bounds
-            for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
-                guess = self.get_initial_guess(model_size, fluidity=False)  # get an initial guess
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                    guess[: 2 * (model_size - 1) + 1] = data[-1][0][: 2 * (model_size - 1) + 1]
-                # minimize the SSE within the given bounds using nelder-mead running for a specified number of iterations
-                # with the target cost and guess-sensitivity of 1e-60, using the random initial guess
-                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
-                                        args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-
-                current_data.append([results.x, results.fun])  # save the final parameters and cost to the trial data
-            current_data = array(current_data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-            best_fit = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial data with the lowest cost -> best fit
-            data.append([best_fit, self.SSE(best_fit, lower_bounds, upper_bounds), toc(True), var(current_data[:, -1])])  # add the best fit trial data to the global fitting attempts data
-        data = array(data, dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        # attempt a trial of fits for model sizes within the specified range using steady state fluidity
-        tic()  # start the timer for the fit
-        fluidity_data = []
-        for model_size in range(1, max_model_size + 1):  # fit with fluidity
-            print('{}%'.format(100 * (model_size + max_model_size) / (max_model_size * 2)), end='\r')
-            current_data = []  # store the data for the current fitting attempts
-            lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                         fluidity=True)  # get the lower and upper bounds for the model size
-            for fit_attempt in range(num_attempts):  # attempt a specified number of fits
-                guess = self.get_initial_guess(model_size,
-                                               fluidity=True)  # get a random initial guess within the specified bounds
-                if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequentially fitting
-                    guess[: 2 * model_size] = data[-1][0][: 2 * model_size]
-                # minimize the SSE within the specified bounds using nelder-mead and the random initial guess
-                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
-                                        args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-
-                current_data.append([results.x, results.fun])  # append the parameters and their cost
-            current_data = array(current_data, dtype='object')  # turn the trial data into a numpy array for easier analysis
-            best_fit_fluidity = current_data[:, 0][argmin(current_data[:, 1])]  # get the trial with the lowest cost
-            fluidity_data.append([best_fit_fluidity, self.SSE(best_fit_fluidity, lower_bounds, upper_bounds), toc(True),
-                                  var(current_data[:, -1])])  # save the trial with the lowest cost's data
-        fluidity_data = array(fluidity_data,
-                              dtype='object')  # convert the global fit data into a numpy array for easier analysis
-        best_fit_fluidity = fluidity_data[
-            argmin(fluidity_data[:, 1])]  # get the fit with the lowest cost across all model variations
-
-        return {'data': {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': best_fit[2],
-                 'trial_variance': best_fit[3]},
-                'fluidity_data': {'final_params': best_fit_fluidity[0], 'final_cost': best_fit_fluidity[1], 'time': best_fit_fluidity[2],
-                 'trial_variance': best_fit_fluidity[3]}}  # return the best fit parameters for both the non-fluidity and fluidity cases
+        non_fluidity_fit = do_fit(solver=solver, fluidity=False, save_global=save_global)
+        fluidity_fit = do_fit(solver=solver, fluidity=True, save_global=save_global)
+        return {'non_fluidity_fit': non_fluidity_fit, 'fluidity_fit': fluidity_fit}
 
 
 class powerLawModel():
@@ -1051,7 +770,7 @@ class powerLawModel():
         '''
         initializes an instance of the customModel class
         used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
-        to a power law rheology model which corresponds to the sample's viscoelastic behavior
+        to a power_simul law rheology model which corresponds to the sample's viscoelastic behavior
         :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
         :param times: either list of numpy arrays or single numpy array corresponding to the time signals from an AFM
         :param indentations: either list of numpy arrays or single numpy array corresponding to the indentation signals from an AFM
@@ -1092,7 +811,7 @@ class powerLawModel():
     def LR_force(self, model_params):
         '''
         calculates the force respones for a generalized maxwell model according to the lee and radok contact mechanics formulation
-        :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power law exponent (a) in the following form
+        :param model_params: numpy array contains the model's instantaneous relaxation (E0) and power_simul law exponent (a) in the following form
         array([E0, a])
         :return: numpy array scaled 'predicted' force signals for all real (experimentally obtained) forces
         '''
@@ -1107,8 +826,8 @@ class powerLawModel():
 
     def get_bounds(self):
         '''
-        gets the boundaries for a power law rheology model of a given size
-        :return: numpy arrays of boundaries for the power law rheology model (lower bound, upper bound)
+        gets the boundaries for a power_simul law rheology model of a given size
+        :return: numpy arrays of boundaries for the power_simul law rheology model (lower bound, upper bound)
         '''
         # calculate the lower bounds by exponentiating a lower end log bound for E0 and a
         lower = 10 ** array([self.E0_logbounds[0], self.a_logbounds[0]]).astype(float)
@@ -1118,8 +837,8 @@ class powerLawModel():
 
     def get_initial_guess(self):
         '''
-        gets random log-uniform initial guess for a power law rheology model of a given size
-        :return: numpy array of initial guess for a power law rheology model
+        gets random log-uniform initial guess for a power_simul law rheology model of a given size
+        :return: numpy array of initial guess for a power_simul law rheology model
         '''
         # calculate an initial guess by exponentiating a log bound guess within the specified ranges
         # for E0 and a
@@ -1142,85 +861,52 @@ class powerLawModel():
             return 1e20 * sse
         return sse
 
-    def fit(self, maxiter=1000, num_attempts=5):
+    def fit(self, maxiter=1000, num_attempts=5, solver='nelder', save_global=False):
         '''
-        fit experimental force distance curve(s) to power law rheology model using a nelder-mead simplex which typically gives good fits rather quickly
+        fit experimental force distance curve(s) to power_simul law model
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
+        :param max_model_size: int largest number of arms per maxwell model to test (going larger tends to give poor and unphysical fits)
+        :param fit_sequential: bool whether or not to fit sequentially (cascade fit from previous model as the initial guess of the next) (RECOMMENDED)
         :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
         will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
+        :param solver: str type of solving method to be used:
+                        nelder: uses nelder-mead simplex method (typically fast and works well)
+                        anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
+                        nls: uses least-squares method (typically fast, but gives a poor fit)
+        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return dict: {best_fit (np array of the best fitting parameters),
+                       time (float time taken to generate the best fit),
+                       conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                       cost (float final cost of the fit),
+                       global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}
         '''
+        if solver not in ['nelder', 'anneal', 'nls']:
+            exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
+
         data = []  # store the global data for the fits
-        tic()  # start the timer
+        lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds for the fit
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
-            lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds for the fit
+            if fit_attempt % 5 == 0:
+                print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
+            bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
             guess = self.get_initial_guess()  # get an initial guess within the specified bounds
             # minimize the SSE within the specified bounds using nelder mead
-            results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                               method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                  'maxfev': maxiter,
-                                                                  'xatol': 1e-60,
-                                                                  'fatol': 1e-60})
-            data.append([results.x, results.fun])  # save the final parameters and final cost
-        data = array(data, dtype='object')  # convert the global data to a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the data from the best fit
-
-    def fit_slow(self, maxiter=1000, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to power law rheology model using simulated annealing with
-        a nelder-mead simplex local search, this is very computationally costly and will take a very long time
-        though typically results in much better fits
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
-        '''
-        data = []  # store the global data for the fits
-        tic()  # start the timer
-        for fit_attempt in range(num_attempts):  # perform a specified number of fits
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
-            lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds
-            bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
-            guess = self.get_initial_guess()  # get an initial guess within the current bounds
-            # minimize the SSE within the specified bounds using dual annealing with nelder mead local search
-            results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                     local_search_options={'method': 'nelder-mead'}, x0=guess)
-            data.append([results.x, results.fun])  # save the final parameters and the cost
-        data = array(data, dtype='object')  # format the trial data as a numpy array for convenient analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the best fit data
-
-    def fit_nls(self, maxiter=1000, num_attempts=5):
-        '''
-        fit experimental force distance curve(s) to power law rheology model using nonlinear least squares, its not amazing
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
-        '''
-        data = []  # store the global data for the fits
-        tic()  # start the timer
-        for fit_attempt in range(num_attempts):  # perform a specified number of fits
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
-            lower_bounds, upper_bounds = self.get_bounds()  # get the lower and upper bounds
-            bound = array((lower_bounds, upper_bounds)).T  # format the bounds for the optimization code
-            guess = self.get_initial_guess()  # get an initial guess within the current bounds
-            # minimize the SSE within the specified bounds using dual annealing with nelder mead local search
-            results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
-                                    args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-
-            data.append([results.x, results.fun])  # save the final parameters and the cost
-        data = array(data, dtype='object')  # format the trial data as a numpy array for convenient analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the best fit data
+            tic()  # start the timer
+            if solver == 'nelder':
+                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead', options={'maxiter': maxiter, 'maxfev': maxiter, 'xatol': 1e-60, 'fatol': 1e-60})
+            elif solver == 'anneal':
+                results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter, local_search_options={'method': 'nelder-mead'}, x0=guess)
+            else:
+                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15, args=(lower_bounds, upper_bounds), max_nfev=maxiter)
+            data.append([results.x, results.fun, toc(True), guess])  # save the final parameters and final cost
+        temp = array(data, dtype='object')  # convert the global data to a numpy array for easier analysis
+        right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
+        confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
+        best_fit = temp[argmin(temp[:, 1])]  # get the trial with the lowest cost
+        if save_global:
+            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds, 'cost': best_fit[1], 'global_data': data}  # return the data from the best fit
+        else:
+            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds, 'cost': best_fit[1]}  # return the data from the best fit
 
 
 class customModel():
@@ -1271,7 +957,7 @@ class customModel():
             return 1e20 * sse
         return sse
 
-    def fit(self, function, training_data, bounds, maxiter=1000, num_attempts=5):
+    def fit(self, function, training_data, bounds, maxiter=1000, num_attempts=5, solver='nelder', save_global=False):
         '''
         fit experimental observable of your choice to a custom model for the observable using a nelder-mead simplex which typically gives good fits rather quickly
         :param function: function for the desired observable to be predicted
@@ -1280,9 +966,16 @@ class customModel():
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
         :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
         will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
+        :param solver: str type of solving method to be used:
+                nelder: uses nelder-mead simplex method (typically fast and works well)
+                anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
+                nls: uses least-squares method (typically fast, but gives a poor fit)
+        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return dict: {best_fit (np array of the best fitting parameters),
+                       time (float time taken to generate the best fit),
+                       conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
+                       cost (float final cost of the fit),
+                       global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}
         '''
         self.observable_function = function  # define the observable function for optimization
         if type(training_data) is list:  # if there are multiple entries for the training data, put them into row vector form
@@ -1295,102 +988,29 @@ class customModel():
         except:  # if this is impossible, the bounds must be incorrectly defined - warn the user
             exit('Error: bounds is not correctly dimensioned! size given: {} size needed: either (2*n,) or (n, 2)'.format(bounds.shape))
         data = []  # store the global data for the fits
-        tic()  # start the timer
         lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
         for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
             print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
             guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
             # minimize the SSE of the custom function using nelder-mead with the given initial guess and parameter bounds
-            results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds),
-                               method='Nelder-Mead', options={'maxiter': maxiter,
-                                                              'maxfev': maxiter,
-                                                              'xatol': 1e-60,
-                                                              'fatol': 1e-60})
-            data.append([results.x, results.fun])  # save the final parameters and their cost
-        data = array(data, dtype='object')  # convert the fit trial data to a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the data for the best fitting trial
-
-    def fit_slow(self, function, training_data, bounds, maxiter=1000, num_attempts=5):
-        '''
-        fit experimental observable of your choice to a custom model for the observable using simulated annealing with
-        a nelder-mead simplex local search, this is very computationally costly and will take a very long time
-        though typically results in much better fits
-        :param function: function for the desired observable to be predicted
-        :param training_data: either numpy array or list of numpy arrays the experimental data to be replicated by the function being trained
-        :param bounds: (n, 2) numpy array of upper and lower bounds: [[lower1, upper1], ... [lowerN, upperN]]
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
-        '''
-        self.observable_function = function  # define the observable function for optimization
-        if type(
-                training_data) is list:  # if there are multiple entries for the training data, put them into row vector form
-            training_data = concatenate(training_data)
-        self.target_observable = training_data  # define the observable as the target for the objective function to replicate
-        if type(bounds) is list:  # convert the function bounds to a numpy array if they aren't already
-            bounds = array(bounds)
-        try:  # put the bounds into the proper shape
-            bounds = bounds.reshape(-1, 2)
-        except:  # if this is impossible, the bounds must be incorrectly defined - warn the user
-            exit(
-                'Error: bounds is not correctly dimensioned! size given: {} size needed: either (2*n,) or (n, 2)'.format(bounds.shape))
-        data = []  # store the global data for the fits
-        tic()  # start the timer
-        lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
-        for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
-            guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
-            # minimize the SSE of the custom function within the specified bounds using dual annealing with a nelder mead local search
-            results = dual_annealing(self.SSE, bounds, args=(lower_bounds, upper_bounds), maxiter=maxiter,
-                                     local_search_options={'method': 'nelder-mead'}, x0=guess)
-            data.append([results.x, results.fun])  # store the final parameters and their cost
-        data = array(data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set\
-
-    def fit_nls(self, function, training_data, bounds, maxiter=1000, num_attempts=5):
-        '''
-        fit experimental observable of your choice to a custom model for the observable using nonlinear least squares, it isn't amazing
-        :param function: function for the desired observable to be predicted
-        :param training_data: either numpy array or list of numpy arrays the experimental data to be replicated by the function being trained
-        :param bounds: (n, 2) numpy array of upper and lower bounds: [[lower1, upper1], ... [lowerN, upperN]]
-        :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
-        :param num_attempts: int number of fitting attempts to make per fit, larger number will give more statistically significant results, but
-        will take longer
-        :return: dict {best_fit, (numpy array of final best fit params),
-                       final_cost, (float of final cost for the best fit params),
-                       time, (float of time taken to generate best fit)}
-        '''
-        self.observable_function = function  # define the observable function for optimization
-        if type(
-                training_data) is list:  # if there are multiple entries for the training data, put them into row vector form
-            training_data = concatenate(training_data)
-        self.target_observable = training_data  # define the observable as the target for the objective function to replicate
-        if type(bounds) is list:  # convert the function bounds to a numpy array if they aren't already
-            bounds = array(bounds)
-        try:  # put the bounds into the proper shape
-            bounds = bounds.reshape(-1, 2)
-        except:  # if this is impossible, the bounds must be incorrectly defined - warn the user
-            exit(
-                'Error: bounds is not correctly dimensioned! size given: {} size needed: either (2*n,) or (n, 2)'.format(bounds.shape))
-        data = []  # store the global data for the fits
-        tic()  # start the timer
-        lower_bounds, upper_bounds = bounds[:, 0], bounds[:, 1]  # define the lower and upper bounds as the first and second columns of the bounds
-        for fit_attempt in range(num_attempts):  # perform a specified number of fit attempts
-            print('{}%'.format(100 * fit_attempt / num_attempts), end='\r')
-            guess = [uniform(low=low, high=high) for low, high in zip(lower_bounds, upper_bounds)]  # create an initial guess within the given parameter bounds
-            # minimize the SSE of the custom function within the specified bounds using dual annealing with a nelder mead local search
-            results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
-                                    args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-
-            data.append([results.x, results.fun])  # store the final parameters and their cost
-        data = array(data, dtype='object')  # convert the trial data to a numpy array for easier analysis
-        best_fit = data[argmin(data[:, 1])]  # get the trial with the lowest cost
-        return {'final_params': best_fit[0], 'final_cost': best_fit[1], 'time': toc(True), 'trial_variance': var(data[:, -1])}  # return the trial data of the best fitting parameter set\
+            tic()  # start the timer
+            if solver == 'nelder':
+                results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead', options={'maxiter': maxiter, 'maxfev': maxiter, 'xatol': 1e-60, 'fatol': 1e-60})
+            elif solver == 'anneal':
+                results = dual_annealing(self.SSE, bounds, args=(lower_bounds, upper_bounds), maxiter=maxiter, local_search_options={'method': 'nelder-mead'}, x0=guess)
+            else:
+                results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15, args=(lower_bounds, upper_bounds), max_nfev=maxiter)
+            data.append([results.x, results.fun, toc(True), guess])  # save the final parameters and final cost
+        temp = array(data, dtype='object')  # convert the global data to a numpy array for easier analysis
+        right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
+        confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
+        best_fit = temp[argmin(temp[:, 1])]  # get the trial with the lowest cost
+        if save_global:
+            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds,
+                    'cost': best_fit[1], 'global_data': data}  # return the data from the best fit
+        else:
+            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds,
+                    'cost': best_fit[1]}  # return the data from the best fit
 
 
 #@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)

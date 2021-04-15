@@ -74,18 +74,28 @@ def forcePowerLaw_LeeRadok(model_params, time, indentation, radius):
 
 def storage_loss_compliance(model_params, w):
     if model_params.size % 2 == 0:  # fluidity case
-        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=1)
-        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=1) + model_params[1] / w
+        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=0)
+        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[2::2], model_params[3::2])], axis=0) + model_params[1] / w
     else:  # non fluidity case
-        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=1)
-        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+        stor = model_params[0] + sum([J / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=0)
+        loss = sum([J * w * T / (1 + (w * T) ** 2) for J, T in zip(model_params[1::2], model_params[2::2])], axis=0)
     return stor, loss
 
 
 def storage_loss_moduli(model_params, w):
-    stor = model_params[0] + sum(model_params[1::2]) - sum([G / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=1)
-    loss = sum([G * w * T / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=1)
+    stor = model_params[0] + sum(model_params[1::2]) - sum([G / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=0)
+    loss = sum([G * w * T / (1 + (w * T) ** 2) for G, T in zip(model_params[1::2], model_params[2::2])], axis=0)
     return stor, loss
+
+
+def abs_mod(model_params, w):
+    st, ls = storage_loss_moduli(model_params, w)
+    return sqrt(st ** 2 + ls ** 2)
+
+
+def abs_com(model_params, w):
+    st, ls = storage_loss_compliance(model_params, w)
+    return sqrt(st ** 2 + ls ** 2)
 
 
 class experimentalmaxwellModel():
@@ -1015,6 +1025,8 @@ class customModel():
 
 #@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)
 #@TODO add the ibw reader
+
+#@TODO change the output from a dict to an object (res.params, .cost, .time, .global, ...)
 
 #@TODO THESE ARE FOR LATER IMPLEMENTATIONS OF THE CODE
 #@TODO add conical and flat punch indenter options

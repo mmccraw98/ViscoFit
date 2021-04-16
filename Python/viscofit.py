@@ -98,18 +98,49 @@ def abs_com(model_params, w):
     return sqrt(st ** 2 + ls ** 2)
 
 
+def relaxance_freq(model_params, w):
+    return model_params[0] + sum([G * T * w / (1 + T * w) for G, T in zip(model_params[1::2], model_params[2::2])], axis=0)
+
+
+def retardance_freq(model_params, w):
+    return model_params[0] + sum([J / (1 + T * w) for J, T in zip(model_params[1::2], model_params[2::2])], axis=0)
+
+
+class fit_result():
+    '''
+    this is the object that is returned as a result of doing a single fit
+    it has the following attributes:
+    x: fit parameters
+    cost: the cost of the final fit
+    time: the amount of time to obtain the fit
+    conf_95: the 95% confidence interval bounds
+    global_x: record of all the fit attempts that have been made in the fitting process
+    '''
+    def __init__(self, x=None, cost=None, time=None, conf_95=None, global_x=None):
+        self.x = x
+        self.cost = cost
+        self.time = time
+        self.conf_95 = conf_95
+        self.global_x = global_x
+
+
+class fit_result_mechanical(fit_result):
+    '''
+    a child class of the fit_result class
+    this is intended to store several fit_result classes, each for a separate fit for a
+    mechanical model of different sizes
+    arm_fits: dict ordered by number of arms in the model, values are the fit_result for that specific model
+    '''
+    def __init__(self, num_arms):
+        self.arm_fits = {}
+        for i in range(1, num_arms + 1):
+            self.arm_fits.update({i: None})
+
+
 class experimentalmaxwellModel():
     def __init__(self, forces, times, indentations, radii, E_logbounds=(1, 9), T_logbounds=(-5, 0)):  #@TODO add conical and flat punch indenter options
         '''
-        initializes an instance of the maxwellModel class
-        used for generating fits, of experimentally obtained force-distance data all belonging to the same sample,
-        to a maxwell model which corresponds to the sample's viscoelastic behavior
-        :param forces: either list of numpy arrays or single numpy array corresponding to the force signals from an AFM
-        :param times: either list of numpy arrays or single numpy array corresponding to the time signals from an AFM
-        :param indentations: either list of numpy arrays or single numpy array corresponding to the indentation signals from an AFM
-        :param radii: either list of floats or single float corresponding to the tip radii of an AFM
-        :param E_logbounds: tuple (float, float) high and low log bound for the elastic elements in the model
-        :param T_logbounds: tuple (float, float) high and low log bound for the time constants in the model
+        EXPERIMENTAL
         '''
         seterr(divide='ignore', under='ignore', over='ignore')  # ignore div0 and under/overflow warnings in numpy
         # if there are multiple inputs, they need to be treated differently than single inputs
@@ -507,36 +538,28 @@ class maxwellModel():
                         nelder: uses nelder-mead simplex method (typically fast and works well)
                         anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
                         nls: uses least-squares method (typically fast, but gives a poor fit)
-        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
-        :return dict: {non_fluidity_fit: {best_fit (np array of the best fitting parameters),
-                                          time (float time taken to generate the best fit),
-                                          conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                                          cost (float final cost of the fit),
-                                          global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)},
-                       fluidity_fit: {best_fit (np array of the best fitting parameters),
-                                      time (float time taken to generate the best fit),
-                                      conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                                      cost (float final cost of the fit),
-                                      global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}}
-        BEST_FIT: [Ge, G1, T1, ... Gn, Tn]
+        :param save_global: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return fit_result_mechanical: an instance of the fit_result_mechanical class, has the following attributes:
+        x: (np array) the best fitting parameters [Ge, G1, T1, ... Gn, Tn]
+        cost: (float) the cost for the set of best fitting parameters
+        time: (float) the time needed to obtain the best fitting parameters
+        conf_95: (tuple of 2 np arrays) lower and upper bound for the 95% confidence interval of the final fit
+        arm_fits: (dict) dictionary containing a fit_result for the best fit for each SIZE of mechanical model
         '''
         if solver not in ['nelder', 'anneal', 'nls']:
             exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
 
-        def do_fit(solver, fluidity, save_global):
-            global_data = []
-            best_fits = []
+        def do_fit(fluidity):
+            fits = fit_result_mechanical(max_model_size)
             for model_size in range(1, max_model_size + 1):  # loop over model sizes
-                print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
+                print('{}%'.format(100 * model_size / (max_model_size * 2)))  # completion log
                 data = []  # store the data for the current fitting attempts
-                lower_bounds, upper_bounds = self.get_bounds(model_size,
-                                                             fluidity=fluidity)  # get lower and upper bounds
-                bound = array(
-                    (lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-                for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
+                lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=fluidity)  # get lower / upper bounds
+                bound = array((lower_bounds, upper_bounds)).T  # convert the bounds to the desired format
+                for fit_attempt in range(num_attempts):  # attempt a number of fits for each model
                     guess = self.get_initial_guess(model_size, fluidity=fluidity)  # get an initial guess
-                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                        guess[: 2 * (model_size - 1) + 1] = best_fits[-1][0][: 2 * (model_size - 1) + 1]
+                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit
+                        guess[: 2 * (model_size - 1) + 1] = fits.arm_fits[model_size - 1].x  # get the best fit from the previous round
                     tic()
                     if solver == 'nelder':
                         results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead',
@@ -550,29 +573,31 @@ class maxwellModel():
                     else:
                         results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
                                                 args=(lower_bounds, upper_bounds), max_nfev=maxiter)
-                    data.append([results.x, results.fun, toc(True),
-                                 guess])  # save the final params, their cost, the fit time, initial param guess
-                temp = array(data, dtype='object')
-                best_fit_params = temp[:, 0][argmin(temp[:, 1])]
-                time = sum(temp[:, 2])
-                right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
-                confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
-                cost = min(temp[:, 1])
+                    data.append([results.x, results.fun, toc(True), guess])  # save the final params, their cost, the fit time, initial param guess
+                data = array(data, dtype='object')  # find the best fit
+                best_fit_params = data[:, 0][argmin(data[:, 1])]
+                time = sum(data[:, 2])
+                right = 1.96 * std(data[:, 0]) / data[:, 0].size
+                confidence_bounds = (mean(data[:, 0]) - right, mean(data[:, 0]) + right)
+                cost = min(data[:, 1])
+                fits.arm_fits[model_size] = fit_result(x=best_fit_params, time=time, conf_95=confidence_bounds, cost=cost)
                 if save_global:
-                    for fit in data:
-                        global_data.append(fit)
-                best_fits.append([best_fit_params, time, confidence_bounds, cost])
-            best_fits = array(best_fits, dtype='object')
-            best_fit = best_fits[argmin(best_fits[:, 1])]
-            if save_global:
-                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3],
-                        'global_data': global_data}
-            else:
-                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3]}
+                    fits.arm_fits[model_size].global_x = data
+            # find the best fit among all the arms
+            min_cost = inf
+            best_fit = None
+            for arm, fit in fits.arm_fits.items():
+                if fit.cost < min_cost:
+                    min_cost = fit.cost
+                    best_fit = fit
+            fits.x = best_fit.x
+            fits.cost = best_fit.cost
+            fits.time = best_fit.time
+            fits.conf_95 = best_fit.conf_95
+            return fits
 
-        non_fluidity_fit = do_fit(solver=solver, fluidity=False, save_global=save_global)
-        fluidity_fit = do_fit(solver=solver, fluidity=True, save_global=save_global)
-        return {'non_fluidity_fit': non_fluidity_fit, 'fluidity_fit': fluidity_fit}
+        non_fluidity_fit = do_fit(fluidity=False)
+        return non_fluidity_fit
 
 
 class kelvinVoigtModel():
@@ -701,7 +726,7 @@ class kelvinVoigtModel():
             return 1e20 * sse
         return sse
 
-    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5, solver='nelder', save_global=False):
+    def fit(self, maxiter=1000, max_model_size=4, fit_sequential=True, num_attempts=5, solver='nelder', save_global=False, fluidity=False):
         '''
         fit experimental force distance curve(s) to kelvin-voigt model of arbitrary size
         :param maxiter: int maximum iterations to perform for each fitting attempt (larger number gives longer run time)
@@ -713,66 +738,67 @@ class kelvinVoigtModel():
                         nelder: uses nelder-mead simplex method (typically fast and works well)
                         anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
                         nls: uses least-squares method (typically fast, but gives a poor fit)
-        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
-        :return dict: {non_fluidity_fit: {best_fit (np array of the best fitting parameters),
-                                          time (float time taken to generate the best fit),
-                                          conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                                          cost (float final cost of the fit),
-                                          global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)},
-                       fluidity_fit: {best_fit (np array of the best fitting parameters),
-                                      time (float time taken to generate the best fit),
-                                      conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                                      cost (float final cost of the fit),
-                                      global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}}
-        BEST_FIT: [Jg, J1, T1, ... Jn, Tn]
+        :param save_global: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return fit_result_mechanical: an instance of the fit_result_mechanical class, has the following attributes:
+        x: (np array) the best fitting parameters [Jg, J1, T1, ... Jn, Tn]
+        cost: (float) the cost for the set of best fitting parameters
+        time: (float) the time needed to obtain the best fitting parameters
+        conf_95: (tuple of 2 np arrays) lower and upper bound for the 95% confidence interval of the final fit
+        arm_fits: (dict) dictionary containing a fit_result for the best fit for each SIZE of mechanical model
         BEST_FIT: fluidity [Jg, Phi_f, J1, T1, ... Jn, Tn]
         '''
         if solver not in ['nelder', 'anneal', 'nls']:
             exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
 
-        def do_fit(solver, fluidity, save_global):
-            global_data = []
-            best_fits = []
+        def do_fit(fluidity):
+            fits = fit_result_mechanical(max_model_size)
             for model_size in range(1, max_model_size + 1):  # loop over model sizes
-                print('{}%'.format(100 * model_size / (max_model_size * 2)), end='\r')
+                print('{}%'.format(100 * model_size / (max_model_size * 2)))  # completion log
                 data = []  # store the data for the current fitting attempts
-                lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=fluidity)  # get lower and upper bounds
-                bound = array((lower_bounds, upper_bounds)).T  # convert the bounds to the desired format for the scipy model
-                for fit_attempt in range(num_attempts):  # attempt a number of attempts for each trial
+                lower_bounds, upper_bounds = self.get_bounds(model_size, fluidity=fluidity)  # get lower / upper bounds
+                bound = array((lower_bounds, upper_bounds)).T  # convert the bounds to the desired format
+                for fit_attempt in range(num_attempts):  # attempt a number of fits for each model
                     guess = self.get_initial_guess(model_size, fluidity=fluidity)  # get an initial guess
-                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit as the initial guess if sequential fitting is desired
-                        guess[: 2 * (model_size - 1) + 1] = best_fits[-1][0][: 2 * (model_size - 1) + 1]
+                    if model_size != 1 and fit_sequential:  # for all guesses past the first guess, use the results from the previous fit
+                        guess[: 2 * (model_size - 1) + 1] = fits.arm_fits[model_size - 1].x  # get the best fit from the previous round
                     tic()
                     if solver == 'nelder':
-                        results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead', options={'maxiter': maxiter,
-                                                                      'maxfev': maxiter,
-                                                                      'xatol': 1e-60,
-                                                                      'fatol': 1e-60})
+                        results = minimize(self.SSE, x0=guess, args=(lower_bounds, upper_bounds), method='Nelder-Mead',
+                                           options={'maxiter': maxiter,
+                                                    'maxfev': maxiter,
+                                                    'xatol': 1e-60,
+                                                    'fatol': 1e-60})
                     elif solver == 'anneal':
-                        results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter, local_search_options={'method': 'nelder-mead'}, x0=guess)
+                        results = dual_annealing(self.SSE, bound, args=(lower_bounds, upper_bounds), maxiter=maxiter,
+                                                 local_search_options={'method': 'nelder-mead'}, x0=guess)
                     else:
-                        results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15, args=(lower_bounds, upper_bounds), max_nfev=maxiter)
+                        results = least_squares(self.SSE, x0=guess, ftol=1e-15, xtol=1e-15, gtol=1e-15,
+                                                args=(lower_bounds, upper_bounds), max_nfev=maxiter)
                     data.append([results.x, results.fun, toc(True), guess])  # save the final params, their cost, the fit time, initial param guess
-                temp = array(data, dtype='object')
-                best_fit_params = temp[:, 0][argmin(temp[:, 1])]
-                time = sum(temp[:, 2])
-                right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
-                confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
-                cost = min(temp[:, 1])
+                data = array(data, dtype='object')  # find the best fit
+                best_fit_params = data[:, 0][argmin(data[:, 1])]
+                time = sum(data[:, 2])
+                right = 1.96 * std(data[:, 0]) / data[:, 0].size
+                confidence_bounds = (mean(data[:, 0]) - right, mean(data[:, 0]) + right)
+                cost = min(data[:, 1])
+                fits.arm_fits[model_size] = fit_result(x=best_fit_params, time=time, conf_95=confidence_bounds, cost=cost)
                 if save_global:
-                    for fit in data:
-                        global_data.append(fit)
-                best_fits.append([best_fit_params, time, confidence_bounds, cost])
-            best_fits = array(best_fits, dtype='object')
-            best_fit = best_fits[argmin(best_fits[:, 1])]
-            if save_global:
-                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3], 'global_data': global_data}
-            else:
-                return {'best_fit': best_fit[0], 'time': best_fit[1], 'conf_0.95': best_fit[2], 'cost': best_fit[3]}
+                    fits.arm_fits[model_size].global_x = data
+            # find the best fit among all the arms
+            min_cost = inf
+            best_fit = None
+            for arm, fit in fits.arm_fits.items():
+                if fit.cost < min_cost:
+                    min_cost = fit.cost
+                    best_fit = fit
+            fits.x = best_fit.x
+            fits.cost = best_fit.cost
+            fits.time = best_fit.time
+            fits.conf_95 = best_fit.conf_95
+            return fits
 
-        non_fluidity_fit = do_fit(solver=solver, fluidity=False, save_global=save_global)
-        fluidity_fit = do_fit(solver=solver, fluidity=True, save_global=save_global)
-        return {'non_fluidity_fit': non_fluidity_fit, 'fluidity_fit': fluidity_fit}
+        non_fluidity_fit = do_fit(fluidity=False)
+        return non_fluidity_fit
 
 
 class powerLawModel():
@@ -883,12 +909,12 @@ class powerLawModel():
                         nelder: uses nelder-mead simplex method (typically fast and works well)
                         anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
                         nls: uses least-squares method (typically fast, but gives a poor fit)
-        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
-        :return dict: {best_fit (np array of the best fitting parameters),
-                       time (float time taken to generate the best fit),
-                       conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                       cost (float final cost of the fit),
-                       global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}
+        :param save_global: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return fit_result_mechanical: an instance of the fit_result class, has the following attributes:
+        x: (np array) the best fitting parameters [E0, a]
+        cost: (float) the cost for the set of best fitting parameters
+        time: (float) the time needed to obtain the best fitting parameters
+        conf_95: (tuple of 2 np arrays) lower and upper bound for the 95% confidence interval of the final fit
         '''
         if solver not in ['nelder', 'anneal', 'nls']:
             exit('solver [\'{}\'] is invalid! use either {}'.format(solver, ['nelder', 'anneal', 'nls']))
@@ -913,10 +939,12 @@ class powerLawModel():
         right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
         confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
         best_fit = temp[argmin(temp[:, 1])]  # get the trial with the lowest cost
+        time = best_fit[2]
+        cost = best_fit[1]
+        fit = fit_result(x=best_fit, time=time, cost=cost, conf_95=confidence_bounds)
         if save_global:
-            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds, 'cost': best_fit[1], 'global_data': data}  # return the data from the best fit
-        else:
-            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds, 'cost': best_fit[1]}  # return the data from the best fit
+            fit.global_x = data
+        return fit
 
 
 class customModel():
@@ -980,12 +1008,12 @@ class customModel():
                 nelder: uses nelder-mead simplex method (typically fast and works well)
                 anneal: uses dual annealing method (typically much slower, but gives a much nicer fit)
                 nls: uses least-squares method (typically fast, but gives a poor fit)
-        :param global_data: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
-        :return dict: {best_fit (np array of the best fitting parameters),
-                       time (float time taken to generate the best fit),
-                       conf_0.95 (tuple of np arrays (lower 0.95 confidence interval, upper 0.95 confidence interval) for the best fitting parameters),
-                       cost (float final cost of the fit),
-                       global_data (list, by column: final params, cost, time, initial guess ONLY IF SAVE_GLOBAL=TRUE)}
+        :param save_global: bool whether or not to return the global data from EVERY fit (for testing purposes, not recommended for normal use)
+        :return fit_result: an instance of the fit_result class, has the following attributes:
+        x: (np array) the best fitting parameters
+        cost: (float) the cost for the set of best fitting parameters
+        time: (float) the time needed to obtain the best fitting parameters
+        conf_95: (tuple of 2 np arrays) lower and upper bound for the 95% confidence interval of the final fit
         '''
         self.observable_function = function  # define the observable function for optimization
         if type(training_data) is list:  # if there are multiple entries for the training data, put them into row vector form
@@ -1015,18 +1043,16 @@ class customModel():
         right = 1.96 * std(temp[:, 0]) / temp[:, 0].size
         confidence_bounds = (mean(temp[:, 0]) - right, mean(temp[:, 0]) + right)
         best_fit = temp[argmin(temp[:, 1])]  # get the trial with the lowest cost
+        time = best_fit[2]
+        cost = best_fit[1]
+        fit = fit_result(x=best_fit, time=time, cost=cost, conf_95=confidence_bounds)
         if save_global:
-            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds,
-                    'cost': best_fit[1], 'global_data': data}  # return the data from the best fit
-        else:
-            return {'best_fit': best_fit[0], 'time': best_fit[2], 'conf_0.95': confidence_bounds,
-                    'cost': best_fit[1]}  # return the data from the best fit
+            fit.global_x = data
+        return fit
 
 
 #@TODO test log fitting against standard fitting i.e. guessing the order of magnitude of each parameter (10**a rather than a)
 #@TODO add the ibw reader
-
-#@TODO change the output from a dict to an object (res.params, .cost, .time, .global, ...)
 
 #@TODO THESE ARE FOR LATER IMPLEMENTATIONS OF THE CODE
 #@TODO add conical and flat punch indenter options

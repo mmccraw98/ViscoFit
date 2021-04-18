@@ -245,8 +245,9 @@ classdef ViscoFit
             % Preallocate arrays/matrices
             storageMod = zeros(size(omega));
             lossMod = zeros(size(omega));
-            armMatrix = repmat(params(3:end),1,length(omega));
-            omegaMatrix = repmat(omega,length(params(3:end)),1);
+            stiffMatrix = repmat(params(3:2:end),1,length(omega));
+            tauMatrix = repmat(params(4:2:end),1,length(omega));
+            omegaMatrix = repmat(omega,length(params(3:2:end)),1);
 
             % Add the appropriate adjustment to the storage and loss moduli
             % according to the inclusion of steady-state fludity. When
@@ -261,8 +262,8 @@ classdef ViscoFit
             end
             
             % Add the effect of the arms.
-            storageMod = storageMod + sum((armMatrix(3:2:end,:).*(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
-            lossMod = lossMod + sum((armMatrix(3:2:end,:).*omegaMatrix.*armMatrix(4:2:end,:))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+            storageMod = storageMod + sum((stiffMatrix.*(omegaMatrix.^2).*(tauMatrix.^2))./(1+(omegaMatrix.^2).*(tauMatrix.^2)),1);
+            lossMod = lossMod + sum((stiffMatrix.*omegaMatrix.*tauMatrix)./(1+(omegaMatrix.^2).*(tauMatrix.^2)),1);
             lossAngle = atand(lossMod./storageMod);
                 
         end % End of the Maxwell Harmonics Calculation Function
@@ -397,16 +398,17 @@ classdef ViscoFit
             % Preallocate arrays/matrices
             storageCompliance = zeros(size(omega));
             lossCompliance = zeros(size(omega));
-            armMatrix = repmat(params(3:end),1,length(omega));
-            omegaMatrix = repmat(omega,length(params(3:end)),1);
+            compMatrix = repmat(params(3:2:end),1,length(omega));
+            tauMatrix = repmat(params(4:2:end),1,length(omega));
+            omegaMatrix = repmat(omega,length(params(3:2:end)),1);
             
             % Add the effects of the elastic arm and steady-state fluidity
             storageCompliance = storageCompliance + params(1);
             lossCompliance = lossCompliance + params(2)./omega;
             
             % Add the effect of the arms.
-            storageCompliance = storageCompliance + sum(armMatrix(3:2:end,:)./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
-            lossCompliance = lossCompliance + sum((armMatrix(3:2:end,:).*omegaMatrix.*armMatrix(4:2:end,:))./(1+(omegaMatrix.^2).*(armMatrix(4:2:end,:).^2)),1);
+            storageCompliance = storageCompliance + sum(compMatrix./(1+(omegaMatrix.^2).*(tauMatrix.^2)),1);
+            lossCompliance = lossCompliance + sum((compMatrix.*omegaMatrix.*tauMatrix)./(1+(omegaMatrix.^2).*(tauMatrix.^2)),1);
 
             % Calculate the absolute modulus
             absCompliance = sqrt(storageCompliance.^2 + lossCompliance.^2);
@@ -637,6 +639,7 @@ classdef ViscoFit
             fitStruct.elasticSetting = elasticSetting;
             fitStruct.fluidSetting = fluidSetting;
             fitStruct.n_iterations = n_iterations;
+            fitStruct.ViscoClass = obj;
             
             % Get the correct objective function for optimization
             switch model
@@ -1103,6 +1106,7 @@ classdef ViscoFit
             fitStruct.elasticSetting = elasticSetting;
             fitStruct.fluidSetting = fluidSetting;
             fitStruct.n_iterations = n_iterations;
+            fitStruct.ViscoClass = obj;
             
             % Get the correct objective function for optimization
             switch model

@@ -68,6 +68,9 @@ FilesCheck(toRemove) = [];
 toRemove = find(contains({FilesCheck.name}, {'settingsStruct','Settings'}));
 FilesCheck(toRemove) = [];
 
+toRemove = find(contains({FilesCheck.name}, {'FitResults','PlotResults','log.txt'}));
+FilesCheck(toRemove) = [];
+
 for i = 1:length(FilesCheck)
     FilesTempPrep = FilesCheck(i).name;
     FilesTempPrep = strsplit(FilesTempPrep, {'_' '.'},'CollapseDelimiters',true);
@@ -106,7 +109,7 @@ if length(FilesCheck) > 1
         
         case lower('TestCondition')
             Files=dir([pathname '/*.mat']);
-            toRemove = find(contains({Files.name}, {'settingsStruct','Settings'}));
+            toRemove = find(contains({Files.name}, {'settingsStruct','Settings','FitResults'}));
             Files(toRemove) = [];
             for k=1:length(Files)
                 FileNames = Files(k).name;
@@ -141,7 +144,7 @@ else
 
         case lower('TestCondition')
             Files=dir([pathname '/*.mat']);
-            toRemove = find(contains({Files.name}, {'settingsStruct','Settings'}));
+            toRemove = find(contains({Files.name}, {'settingsStruct','Settings','FitResults'}));
             Files(toRemove) = [];
             
             FileNames = Files.name;

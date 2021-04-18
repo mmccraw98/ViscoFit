@@ -259,7 +259,10 @@ for i_dir = 1:length(Folders)
                             LR_Voigt(tempResults.bestParams{k},visco.times,visco.dts,visco.forces,visco.tipSize,visco.nu,visco.tipGeom,tempResults.elasticSetting,tempResults.fluidSetting));
                     case 'plr'
                         markerType = markerStyles{3};
-                        modelSSEHarmonic = 1;
+                        harmonicSettings.dt = dt;
+                        harmonicSettings.nu_sample = mode(cell2mat(cellfun(@(x)mode(round(x,4,'significant')),nu,'UniformOutput',false)));
+                        [modelStorage,modelLoss,~] = visco.harmonics_PLR(omega,harmonicSettings);
+                        modelSSEHarmonic = sse_global(simAbsMod,sqrt(modelStorage.^2+modelLoss.^2));
                         modelSSETime = sse_global(visco.indentations,...
                             LR_PLR(tempResults.bestParams{1},visco.times,visco.dts,visco.indentations,visco.tipSize,visco.nu,visco.tipGeom,tempResults.elasticSetting,tempResults.fluidSetting));
                     otherwise

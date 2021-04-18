@@ -529,6 +529,62 @@ classdef ViscoFit
             end
         end % End PLR SSE Map Function
         
+        function [storageMod,lossMod,lossAngle] = harmonics_PLR(~,omega,fitStruct)
+            %harmonics_PLR Calculate the Viscoelastic Harmonic
+            %Quantities for a given Power Law Model Parameter Set
+                %   Calculate the Viscoelastic Storage Modulus, Loss
+                %   Modulus, and Loss Angle (a.k.a., Loss Tangent) for the
+                %   given set of Power Law Rheology Model parameters
+                %   acquired using the fitData() class function. The
+                %   structure that is provided by the fitData() function
+                %   must be included, in addition to the desired frequency
+                %   array for evaluation. This function utilizes the DFT
+                %   because the analytical Fourier transform of the PLR
+                %   model is difficult to calculate. To provide a starting
+                %   point for the manuscript, we have elected to estimate
+                %   it discretely.
+                
+            % Make sure we're using the right function
+            if ~strcmpi(fitStruct.model,'plr')
+                error('You attempted to pass parameters from a different viscoelastic model to the harmonics_PLR function. Please ensure you are passing the correct results.');
+            end
+                
+            % Load the settings we need
+            params = fitStruct.bestParams;
+            elasticSetting = fitStruct.elasticSetting;
+            fluidSetting = fitStruct.fluidSetting;
+            
+            % Make sure our input arrays are the right shape
+            if isrow(params) params = params'; end
+            if ~isrow(omega) omega = omega'; end
+            
+            % Preallocate arrays/matrices
+            storageMod = zeros(size(omega));
+            lossMod = zeros(size(omega));
+            
+            % Calculate Power Law Rheology Modulus
+            time_downsampled = round(fliplr(1./(omega./(2*pi))),4,'significant');
+            time = time_downsampled(1):fitStruct.dt:time_downsampled(end);
+            w_full = fliplr(2.*pi.*(1./time));
+            t_prime = fitStruct.dt;
+            E = params(1).*( (1 + time./t_prime) .^ (-params(2)) );
+            G = E./(2*(1+fitStruct.nu_sample));
+            
+            % Calculate the discrete fourier transform (DFT) of the modulus
+            % found using the PLR model.
+            complexModulus = fft(G);
+            storageMod = (real(complexModulus));
+            storageMod(storageMod<2*eps) = 0;
+            lossMod = (imag(complexModulus));
+            lossMod(lossMod<2*eps) = 0;
+            
+            % Downsample again to the input frequency vector
+            storageMod = interp1(w_full,storageMod,omega,'spline');
+            lossMod = interp1(w_full,lossMod,omega,'spline');
+            lossAngle = atand(lossMod./storageMod);
+                
+        end % End of the PLR Harmonics Calculation Function
+        
         function [ub,lb] = getParamsCI(~,param_pop,varargin)
             %getParamsCI Get the Confidence Interval for a Parameter
             %Population

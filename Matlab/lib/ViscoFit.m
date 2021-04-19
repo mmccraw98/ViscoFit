@@ -574,9 +574,9 @@ classdef ViscoFit
             % found using the PLR model.
             complexModulus = fft(G);
             storageMod = (real(complexModulus));
-            storageMod(storageMod<2*eps) = 0;
+            storageMod(storageMod<1) = 1e-3;
             lossMod = (imag(complexModulus));
-            lossMod(lossMod<2*eps) = 0;
+            lossMod(lossMod<1) = 1e-3;
             
             % Downsample again to the input frequency vector
             storageMod = interp1(w_full,storageMod,omega,'spline');

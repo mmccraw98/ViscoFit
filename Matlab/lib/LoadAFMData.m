@@ -451,12 +451,12 @@ for k = 1:length(Files)
             tip_rep_pos_smooth = 1;
         end
     elseif strcmp(findRep,'reverse')
-        tip_rep_pos = (length(tip_rep) - find(flipud(tip_rep)<0,1));       % Find last position above 0
+        tip_rep_pos = (length(tip_rep) - find(flip(tip_rep)<0,1));       % Find last position above 0
         if isempty(tip_rep_pos) || tip_rep_pos == 0
             tip_rep_pos = 1;
         end
         
-        tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flipud(tip_rep_smooth)<0,1));   % Find last position above 0
+        tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flip(tip_rep_smooth)<0,1));   % Find last position above 0
         if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
             tip_rep_pos_smooth = 1;
         end
@@ -855,12 +855,12 @@ for i = 1:length(v_unique)
         tip_rep_pos = find(tip_rep>0,1);                                   % Find first position above 0
         tip_rep_pos_smooth = find(tip_rep_smooth>0,1);                     % Find first position above 0
     elseif strcmp(findRep,'reverse')
-        tip_rep_pos = (length(tip_rep) - find(flipud(tip_rep)<0,1));       % Find last position above 0
+        tip_rep_pos = (length(tip_rep) - find(flip(tip_rep)<0,1));       % Find last position above 0
         if isempty(tip_rep_pos) || tip_rep_pos == 0
             tip_rep_pos = 1;
         end
         
-        tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flipud(tip_rep_smooth)<0,1));       % Find last position above 0
+        tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flip(tip_rep_smooth)<0,1));       % Find last position above 0
         if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
             tip_rep_pos_smooth = 1;
         end

@@ -434,9 +434,10 @@ if Nplots > 1
         if any(i==(1:nCols:Nplots))
             ylabel(ylabelStr,'fontweight','bold','interpreter','latex')
         end
-        if any(i>(nRows-1)*nCols)
-            xlabel('Test Condition No.','fontweight','bold','interpreter','latex')
-        end
+%         if any(i>(nRows-1)*nCols)
+%             xlabel('Test Condition No.','fontweight','bold','interpreter','latex')
+%         end
+        xlabel('Test Condition No.','fontweight','bold','interpreter','latex')
         legend({'Gen. Maxwell', 'Gen. Voigt', 'PLR'},'location','best')
         grid off
         box on

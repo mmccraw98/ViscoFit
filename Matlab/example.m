@@ -136,6 +136,7 @@ for i_dir = 1:length(Folders)
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 200;                 % Use 200 random initializations
     fitSettings.n_fitIterations = 5e3;              % No. of iterations for solver
+    fitSettings.errortype = 'mse';                  % Use Mean-Squared Error during fitting
     maxwellFit_NM = visco.fitData(fitSettings);
 
     % Test the Voigt
@@ -196,12 +197,9 @@ for i_dir = 1:length(Folders)
     % Make a structure for our settings
     % fitSettings = struct;
 
-    % Test the Maxwell
+    % Modify the settings to test the Maxwell
     fitSettings.solver = 'annealing';               % Fit using Simulated Annealing
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
-    fitSettings.elasticSetting = 1;                 % Include Elastic Term
-    fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 5;                   % Use 5 random initializations
     fitSettings.n_fitIterations = 5e2;              % No. of iterations for solver
     maxwellFit_Anneal = visco.fitData(fitSettings);
@@ -267,9 +265,6 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'nls';                     % Fit using lsqcurvefit
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
-    fitSettings.elasticSetting = 1;                 % Include Elastic Term
-    fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 200;                 % Use 200 random initializations
     fitSettings.n_fitIterations = 1e4;              % No. of iterations for solver
     maxwellFit_NLS = visco.fitData(fitSettings);

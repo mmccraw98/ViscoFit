@@ -169,7 +169,7 @@ classdef ViscoFit
             
         end
         
-        function sse = SSE_Maxwell(obj,params,elasticSetting,fluidSetting)
+        function errorsum = SSE_Maxwell(obj,params,elasticSetting,fluidSetting,varargin)
             %SSE_Maxwell Calculate the SSE for the Maxwell model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Maxwell Model according to the Lee and Radok indentation
@@ -179,14 +179,40 @@ classdef ViscoFit
             %   curves for a particular approach velocity and stacking them
             %   end-to-end in a row vector). Separation and convolution of
             %   the correct regions of this row vector is handled inside
-            %   the LR_Maxwell function.
+            %   the LR_Maxwell function. You can also pass an optional
+            %   argument to this function, which is a string defining the
+            %   error calculation method. The standard is 'sse' which does
+            %   the sum of squared errors. Alternately, you can use the
+            %   Mean Squared Error by specifying 'mse'. This will normalize
+            %   each dataset individually by its variance and degrees of
+            %   freedom.
+            
+            errortype = 'sse';
+            if ~isempty(varargin)
+                if length(varargin) <= 2
+                    % Grab the error setting
+                    errortype = varargin{1};
+                else
+                    error('You are passing too many arguments to SSE_maxwell. Please verify your inputs.');
+                end
+            end
             
             % Calculate test forces
             test_forces = LR_Maxwell(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
             
             % calculate global residual
-            sse_global = sum((obj.forces-test_forces).^2);
-            sse = sum(sse_global);
+            switch errortype
+                case 'sse'
+                    error_global = sum((obj.forces-test_forces).^2);
+                    errorsum = sum(error_global);
+                case 'mse'
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cell2mat(normtemp);
+                    errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
+                otherwise
+                    error('That error type is not implemented in SSE_maxwell. Please select an error type that exists in the function definition.')
+            end
             
             [tauInds,modulusInds] = getParamIndices(params);
             ub = zeros(size(params))+eps;
@@ -207,7 +233,7 @@ classdef ViscoFit
             end
             
             if any(ub-params < 0) || any(params-lb < 0)
-                sse = Inf;
+                errorsum = Inf;
             end
         end % End Maxwell SSE Function
         
@@ -311,7 +337,7 @@ classdef ViscoFit
             end
         end % End Maxwell SSE Function
         
-        function sse = SSE_Voigt(obj,params,elasticSetting,fluidSetting)
+        function errorsum = SSE_Voigt(obj,params,elasticSetting,fluidSetting,varargin)
             %SSE_Voigt Calculate the SSE for the Voigt model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Voigt Model according to the Lee and Radok indentation
@@ -322,6 +348,16 @@ classdef ViscoFit
             %   end-to-end in a row vector). Separation and convolution of
             %   the correct regions of this row vector is handled inside
             %   the LR_Voigt function.
+            
+            errortype = 'sse';
+            if ~isempty(varargin)
+                if length(varargin) <= 2
+                    % Grab the error setting
+                    errortype = varargin{1};
+                else
+                    error('You are passing too many arguments to SSE_maxwell. Please verify your inputs.');
+                end
+            end
             
             % Calculate test indentation
             test_indentations = LR_Voigt(params,obj.times,obj.dts,obj.forces,obj.tipSize,obj.nu,obj.tipGeom,elasticSetting,fluidSetting);
@@ -334,8 +370,18 @@ classdef ViscoFit
             end
             
             % calculate global residual
-            sse_global = sum(((obj.indentations.^beta)-test_indentations).^2);
-            sse = sum(sse_global);
+            switch errortype
+                case 'sse'
+                    sse_global = sum(((obj.indentations.^beta)-test_indentations).^2);
+                    errorsum = sum(sse_global);
+                case 'mse'
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.indentations_cell,'UniformOutput',false);
+                    normtemp = cell2mat(normtemp);
+                    errorsum = sum(((test_indentations-(obj.indentations.^beta)).^2).*normtemp);
+                otherwise
+                    error('That error type is not implemented in SSE_voigt. Please select an error type that exists in the function definition.')
+            end
             
             [tauInds,modulusInds] = getParamIndices(params);
             ub = zeros(size(params))+eps;
@@ -356,7 +402,7 @@ classdef ViscoFit
             end
             
             if any(ub-params < 0) || any(params-lb < 0)
-                sse = Inf;
+                errorsum = Inf;
             end
         end % End Voigt SSE Map Function
         
@@ -470,10 +516,10 @@ classdef ViscoFit
             end
         end % End Voigt SSE Map Function
         
-        function sse = SSE_PLR(obj,params,varargin)
-            %SSE_Maxwell Calculate the SSE for the Maxwell model
-            %   Calculate the Sum of Squared Errors for the Generalized
-            %   Maxwell Model according to the Lee and Radok indentation
+        function errorsum = SSE_PLR(obj,params,varargin)
+            %SSE_PLR Calculate the SSE for the PLR model
+            %   Calculate the Sum of Squared Errors for the Power Law
+            %   Rheology Model according to the Lee and Radok indentation
             %   configuration, given a set of input parameters (params).
             %   This function performs fitting simultaneously for all force
             %   curves by linearizing the entire dataset (i.e. taking all
@@ -482,12 +528,33 @@ classdef ViscoFit
             %   the correct regions of this row vector is handled inside
             %   the LR_PLR function.
             
+            errortype = 'sse';
+            erroropts = {'sse','mse'};
+            if ~isempty(varargin)
+                for i = 1:length(varargin)
+                    if ischar(varargin{i}) && strcmpi(varargin{i},erroropts)
+                        % Grab the error setting
+                        errortype = varargin{i};
+                    end
+                end
+            end
+            
             % Calculate test forces
             test_forces = LR_PLR(params,obj.times,obj.dts,obj.indentations,obj.tipSize,obj.nu,obj.tipGeom);
             
             % calculate global residual
-            sse_global = sum((obj.forces-test_forces).^2);
-            sse = sum(sse_global);
+            switch errortype
+                case 'sse'
+                    sse_global = sum((obj.forces-test_forces).^2);
+                    errorsum = sum(sse_global);
+                case 'mse'
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cell2mat(normtemp);
+                    errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
+                otherwise
+                    error('That error type is not implemented in SSE_PLR. Please select an error type that exists in the function definition.')
+            end
             
             % Power Law Rheology Roster:
             % [E_0 alpha]
@@ -495,14 +562,14 @@ classdef ViscoFit
             lb = [1e-2;0];
             
             if any(ub(1:length(params))-params < 0) || any(params-lb(1:length(params)) < 0)
-                sse = Inf;
+                errorsum = Inf;
             end
         end % End PLR SSE Function
         
         function sse = SSE_PLR_Map(obj,params,idx,varargin)
-            %SSE_Maxwell Calculate the SSE for the Maxwell model
-            %   Calculate the Sum of Squared Errors for the Generalized
-            %   Maxwell Model according to the Lee and Radok indentation
+            %SSE_PLR_Map Calculate the SSE for the PLR model
+            %   Calculate the Sum of Squared Errors for the Power Law
+            %   Rheology Model according to the Lee and Radok indentation
             %   configuration, given a set of input parameters (params).
             %   This function performs fitting for all force curves
             %   separately, by taking in an additional index (idx) compared
@@ -666,6 +733,7 @@ classdef ViscoFit
             fluidSetting = 0;           % No Steady-State Fluidity
             n_iterations = 100;         % Use 100 random initializations as a default
             n_fitIterations = 1e4;      % No. of iterations for solver
+            errortype = 'sse';           % Error model to use
             if ~isempty(varargin)
                 % Only one varargin is accepted, and it is a structure
                 % containing all of the settings information we require
@@ -679,6 +747,7 @@ classdef ViscoFit
                 fluidSetting = fitOpts.fluidSetting;
                 n_iterations = fitOpts.n_iterations;
                 n_fitIterations = fitOpts.n_fitIterations;
+                errortype = fitOpts.errortype;
                 if strcmpi(solver,'custom')
                     if isfield(fitOpts,'customFunc')
                         customFunc = fitOpts.customFunc;
@@ -695,6 +764,7 @@ classdef ViscoFit
             fitStruct.elasticSetting = elasticSetting;
             fitStruct.fluidSetting = fluidSetting;
             fitStruct.n_iterations = n_iterations;
+            fitStruct.errortype = errortype;
             fitStruct.ViscoClass = obj;
             
             % Get the correct objective function for optimization
@@ -886,10 +956,10 @@ classdef ViscoFit
                             progressString = sprintf('Nelder-Mead (%s)\nInvestigating Elastic Parameter\nParallel Search Running...',model);
                             hbar = parfor_progressbar(n_iterations,progressString);
                             warning('off');
-                            parfor j = 1:n_iterations
+                            for j = 1:n_iterations
                                 % Get the grid search starting position
                                 beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,options);
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,options);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -916,7 +986,7 @@ classdef ViscoFit
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,options);
+                            [beta_dist(:,j),residual_dist(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,options);
                             hbar.iterate(1);
                         end
                         close(hbar);
@@ -957,7 +1027,7 @@ classdef ViscoFit
                             parfor j = 1:n_iterations
                                 % Get the grid search starting position
                                 beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,nelderopts);
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,nelderopts);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -984,7 +1054,7 @@ classdef ViscoFit
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = annealOpt(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,annealopts,nelderopts);
+                            [beta_dist(:,j),residual_dist(j)] = annealOpt(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,annealopts,nelderopts);
                             hbar.iterate(1);
                         end
                         close(hbar);
@@ -1015,7 +1085,7 @@ classdef ViscoFit
                             parfor j = 1:n_iterations
                                 % Get the grid search starting position
                                 beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
-                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
+                                [beta_dist_elastic(j),residual_dist_elastic(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
                                 hbar.iterate(1);
                             end
                             close(hbar);
@@ -1042,7 +1112,7 @@ classdef ViscoFit
                             % Get the grid search starting position
                             beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                             beta0_dist(:,j) = beta0;
-                            [beta_dist(:,j),residual_dist(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb,ub,[],fminoptions);
+                            [beta_dist(:,j),residual_dist(j)] = fmincon(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,[],[],[],[],lb,ub,[],fminoptions);
                             hbar.iterate(1);
                         end
                         close(hbar);

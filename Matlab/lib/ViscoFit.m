@@ -956,7 +956,7 @@ classdef ViscoFit
                             progressString = sprintf('Nelder-Mead (%s)\nInvestigating Elastic Parameter\nParallel Search Running...',model);
                             hbar = parfor_progressbar(n_iterations,progressString);
                             warning('off');
-                            for j = 1:n_iterations
+                            parfor j = 1:n_iterations
                                 % Get the grid search starting position
                                 beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{j});
                                 [beta_dist_elastic(j),residual_dist_elastic(j)] = fminsearch(@(x)objFunc(x,elasticSetting,fluidSetting,errortype),beta0,options);

@@ -62,7 +62,7 @@ toRemove = find([FilesCheck.isdir] == 1);
 FilesCheck(toRemove) = [];
 
 % Remove Filetypes To Ignore
-toRemove = find(~endsWith({FilesCheck.name}, {'.ibw','.txt','.spm','.mat','.csv'}));
+toRemove = find(~endsWith({FilesCheck.name}, {'.ibw','.txt','.spm','.mat','.csv','.jpk-qi-data'}));
 FilesCheck(toRemove) = [];
 
 toRemove = find(contains({FilesCheck.name}, {'settingsStruct','Settings'}));
@@ -73,22 +73,18 @@ FilesCheck(toRemove) = [];
 
 for i = 1:length(FilesCheck)
     FilesTempPrep = FilesCheck(i).name;
-    FilesTempPrep = strsplit(FilesTempPrep, {'_' '.'},'CollapseDelimiters',true);
+    FilesTempPrep = strsplit(FilesTempPrep, {'_' '.' ' '},'CollapseDelimiters',true);
     strSwitchPrep = FilesTempPrep{1};
     tempLabels{i} = strSwitchPrep;
 end
 
-if exist('tempLabels','var')
-    if length(unique(tempLabels)) > 1
-        error('ERROR: Attempted to pass previous fit results as input. Please ensure only data is stored in this directory.');
-    end
-else
+if ~exist('tempLabels','var')
     error('ERROR: No valid AFM files found! Please ensure you have selected the correct directory, and that LoadAFMData contains a case describing how to load that filetype.');
 end
 
 if length(FilesCheck) > 1
     FilesTemp = FilesCheck(1).name;
-    FilesTemp = strsplit(FilesTemp, {'_' '.'},'CollapseDelimiters',true);
+    FilesTemp = strsplit(FilesTemp, {'_' '.' ' '},'CollapseDelimiters',true);
     
     strSwitch = FilesTemp{1};
     while isstrprop(strSwitch(end),'digit')
@@ -119,13 +115,22 @@ if length(FilesCheck) > 1
                 point_number(k) = k;                                        % Position Number
                 run_number(k) = 1;                                          % Run Number
             end
+            
+        case lower({'HPAF','HPDE'})
+            Files = dir([pathname '/*.jpk-qi-data']);
+            toRemove = find(contains({Files.name}, {'settingsStruct','Settings','FitResults'}));
+            Files(toRemove) = [];
+            for k=1:length(Files)
+                FileNames = Files(k).name;
+                FileInfo = strsplit(FileNames, {'_' '-' '.'},'CollapseDelimiters',true);
+            end
         
     end
     
 else
     
     FilesTemp = FilesCheck.name;
-    FilesTemp = strsplit(FilesTemp, {'_' '.'},'CollapseDelimiters',true);
+    FilesTemp = strsplit(FilesTemp, {'_' '.' ' '},'CollapseDelimiters',true);
     
     strSwitch = FilesTemp{1};
     while isstrprop(strSwitch(end),'digit')
@@ -153,7 +158,15 @@ else
             v_approach = str2num(FileInfo{5})*1E-9;                 % Approach Velocity, nm/s
             point_number = 1;                                       % Position Number
             run_number = 1;                                         % Run Number
-           
+            
+        case lower({'HPAF','HPDE'})
+            Files = dir([pathname '/*.jpk-qi-data']);
+            toRemove = find(contains({Files.name}, {'settingsStruct','Settings','FitResults'}));
+            Files(toRemove) = [];
+            
+            FileNames = Files.name;
+            FileInfo = strsplit(FileNames, {'_' '-' '.'},'CollapseDelimiters',true);
+
     end
 end
 
@@ -168,7 +181,7 @@ Files(FilesRemove) = [];
 % for each one.
 for k = 1:length(Files)
     FileNames = Files(k).name;
-    FileInfo = strsplit(FileNames, {'_' '.'},'CollapseDelimiters',true);
+    FileInfo = strsplit(FileNames, {'_' '.' ' '},'CollapseDelimiters',true);
     
     strSwitch = FileInfo{1};
     while isstrprop(strSwitch(end),'digit')
@@ -272,7 +285,93 @@ for k = 1:length(Files)
             defl_InVOLS(k) = 1;
             dataStruct(k).dt = settingsData.settingsStruct.dt;
             
+        case lower({'HPAF','HPDE'})
+            % This is a test case for the map analysis functionality. The
+            % data used here was collected using a JPK NanoWizard BioAFM
+            % and a conical, live cell probe. This type of data loading is
+            % unique from the legacy methods above, because there are a
+            % large number of pixels being imported as opposed to
+            % individual files corresponding to force curve experiments.
+            % This is because the JPK Quantititative Imaging (QI) method
+            % was used to collect both map and force spectroscopy data
+            % simultaneously. This vastly increases the amount of data. 
+            % Using the "open_JPK" function which has been adapted from the
+            % original version on the MEX from Dr. Ortuso, R.D., each pixel
+            % is introduced as a row in the dataStruct, with an ID column
+            % that will store separate maps with unique IDs so the data can
+            % be separated later on.
+            oldMaps = dir([Files(k).folder sprintf('/mapStruct-%s-%s.mat',FileInfo{1},FileInfo{2})]);
+            
+            if isempty(oldMaps)
+                tic
+                fileStruct = open_JPK([Files(k).folder '/' Files(k).name]);
+                loadTime = toc;
+                fprintf('\nIt took %6.2 minutes to load %s.\n',loadTime/60,Files(k).name)
+                save([Files(k).folder '/' sprintf('mapStruct-%s-%s.mat',FileInfo{1},FileInfo{2})],'fileStruct');
+            else
+                load([oldMaps.folder '/' oldMaps.name],'fileStruct'); % Load the previous filestruct!
+            end
+            numPixels = length(fileStruct);
+            indShift = size(dataStruct,2);
+            
+            if indShift == 1
+                indShift = 0;
+            end
+            
+            for i_pix = (1:numPixels)
+                dataStruct(i_pix+indShift).mapID = k;
+                
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'z'),1);
+                dataStruct(i_pix+indShift).z = fileStruct{i_pix}(idx).extend;
+                if includeRetract
+                    dataStruct(i_pix+indShift).z = vertcat(dataStruct(i_pix+indShift).z,fileStruct{i_pix}(idx).retract);
+                end
+
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'d'),1);
+                dataStruct(i_pix+indShift).d = fileStruct{i_pix}(idx).extend;
+                if includeRetract
+                    dataStruct(i_pix+indShift).d = vertcat(dataStruct(i_pix+indShift).d,fileStruct{i_pix}(idx).retract);
+                end
+                
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'F'),1);
+                dataStruct(i_pix+indShift).F = fileStruct{i_pix}(idx).extend;
+                if includeRetract
+                    dataStruct(i_pix+indShift).F = vertcat(dataStruct(i_pix+indShift).F,fileStruct{i_pix}(idx).retract);
+                end
+
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'t'),1);
+                dataStruct(i_pix+indShift).t = fileStruct{i_pix}(idx).extend;
+                if isrow(dataStruct(i_pix+indShift).t)  dataStruct(i_pix+indShift).t =  dataStruct(i_pix+indShift).t'; end
+                dataStruct(i_pix+indShift).dt = mode(round(gradient(dataStruct(i_pix+indShift).t),3,'significant'));
+                if includeRetract
+                    dataStruct(i_pix+indShift).t = vertcat( dataStruct(i_pix+indShift).t,...
+                        (dataStruct(i_pix+indShift).dt.*(1:length(fileStruct{i_pix}(idx).retract))'+dataStruct(i_pix+indShift).t(end)) );
+                end
+                
+                v_approach(i_pix) = round(abs(mean(gradient(dataStruct(i_pix+indShift).z)./dataStruct(i_pix+indShift).dt)),2,'significant');  % Approach Velocity, m/s
+                
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'pixel'),1);
+                point_number(i_pix) = str2double(fileStruct{i_pix}(idx).extend);     % Position Number
+                run_number(i_pix) = 1;     % Run Number
+
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'mapsize'),1);
+                dataStruct(i_pix+indShift).mapSize = fileStruct{i_pix}(idx).extend;
+                
+                idx = find(contains({fileStruct{i_pix}(:).Channel_name},'stiffness'),1);
+                k_cantilever(i_pix) = fileStruct{i_pix}(idx).extend;
+                
+                dataStruct(i_pix).r_tip = 30;   % Angle, Degrees, of the Conical Tip
+                dataStruct(i_pix).nu_sample = 0.5;  % Poisson's Ratio of the sample
+                
+            end
+            
+            clearvars fileStruct
+                        
     end
+    
+end
+
+for k = 1:size(dataStruct,2)
     
     % Pre-Processing
     % Find the approach portion of the data    
@@ -307,7 +406,7 @@ for k = 1:length(Files)
     
     % Give the user feedback, if they weren't aware the file was short.
     if numel(dataStruct(k).z_approach) <= 100
-        fprintf('\nWarning: There is a file with very few (<100) z-sensor\ndatapoints in the approach phase:\n%s\n\n',Files(k).name);
+        fprintf('\nWarning: There is a file with very few (<100) z-sensor\ndatapoints in the approach phase:\nCurve No. %d\n\n',k);
     end    
     
     % Calculate Deflection Offset
@@ -516,10 +615,12 @@ v_unique = (unique(v_approach));
 r_tip_array = zeros(size(v_unique));
 nu_sample_array = zeros(size(v_unique));
 
-if length(Files) > 1
-    N = length(Files);
+n_rows = size(dataStruct,2);
+
+if size(dataStruct,2) > 1
+    N = n_rows;
     
-    for k=1:length(Files)
+    for k = 1:n_rows
         [minVal(k),~] = min(dataStruct(k).t_approach);
         [maxVal(k),~] = max(dataStruct(k).t_approach);
         dtVal(k) = dataStruct(k).dt;
@@ -532,7 +633,7 @@ if length(Files) > 1
         [minRepInd,minRepFile] = min(tip_rep_pos_all + dSmoothMinAll);
         [endNum,~] = min(maxVal);
 
-        xi = startNum:median(dtVal):endNum;  % Create Vector Of Common time values
+        xi = (startNum:median(dtVal):endNum)';  % Create Vector Of Common time values
         di = [];
         zi = [];
         ti = [];
@@ -541,24 +642,29 @@ if length(Files) > 1
         forceLimits = [];
         timeLimits = [];
         
-        r_tip_array(1) = mode(cell2mat({dataStruct(1:length(Files)).r_tip}));
-        nu_sample_array(1) = mode(cell2mat({dataStruct(1:length(Files)).nu_sample}));
+        r_tip_array(1) = mode(cell2mat({dataStruct(1:n_rows).r_tip}));
+        nu_sample_array(1) = mode(cell2mat({dataStruct(1:n_rows).nu_sample}));
         
         % When only one velocity is present
-        for k=1:length(Files)
-            shiftVal = (dataStruct(k).t_approach(tip_rep_pos_all(k)+dataStruct(k).dSmoothMin) - ...
-                            dataStruct(minRepFile).t_approach(minRepInd));
+        for k = 1:n_rows
+            if k == minRepFile
+                adjustInd = 1;
+            else
+                adjustInd = 0;
+            end
+            shiftVal = (dataStruct(k).t_approach(tip_rep_pos_all(k)+dataStruct(k).dSmoothMin-1) - ...
+                            dataStruct(minRepFile).t_approach(minRepInd-adjustInd));
 
             [tempz, ~] = unique(dataStruct(k).t_approach - shiftVal);
 
-            di(k,:) = interp1(tempz, dataStruct(k).d_corrected,...
+            di(:,k) = interp1(tempz, dataStruct(k).d_corrected,...
                 xi(:), 'linear', NaN); % Interploate deflection to new �x� Values
 
-            zi(k,:) = interp1(tempz, dataStruct(k).z_corrected,...
+            zi(:,k) = interp1(tempz, dataStruct(k).z_corrected,...
                 xi(:), 'linear', NaN); % Interploate z-sensor to new �x� Values
 
             % Create an associated time array for averaging
-            ti(k,:) =  xi;
+            ti(:,k) =  xi;
             
             % Hold on to the data lengths so we can keep track
             % of which files are worst and should be ignored.
@@ -578,9 +684,9 @@ if length(Files) > 1
         % Interpolate according to the variance in the time array that
         % comes from averaging the results.
         t_interp = (1:size(ti,2))*median(dtVal);
-        z_interp = interp1(mean(ti,1), mean(zi,1),...
+        z_interp = interp1(mean(ti,2), mean(zi,2),...
                 t_interp, 'linear', NaN)'; % Interploate Or Extrapolate To New Time Values
-        d_interp = interp1(mean(ti,1), mean(di,1),...
+        d_interp = interp1(mean(ti,2), mean(di,2),...
                 t_interp, 'linear', NaN)'; % Interploate Or Extrapolate To New Time Values
         
         nanCheck = isnan(reshape(t_interp,1,length(t_interp))) +...
@@ -591,32 +697,32 @@ if length(Files) > 1
         t_interp(nanCheck == 1) = [];
         z_interp(nanCheck == 1) = [];
         d_interp(nanCheck == 1) = [];
-        
+                
         if size(z_interp,2) < size(z_interp,1)
-            dataStruct(length(Files)+1).z_average = z_interp';
+            dataStruct(n_rows+1).z_average = z_interp';
         else
-            dataStruct(length(Files)+1).z_average = z_interp;
+            dataStruct(n_rows+1).z_average = z_interp;
         end
         
         if size(d_interp,2) < size(d_interp,1)
-            dataStruct(length(Files)+1).d_average = d_interp';
+            dataStruct(n_rows+1).d_average = d_interp';
         else
-            dataStruct(length(Files)+1).d_average = d_interp;
+            dataStruct(n_rows+1).d_average = d_interp;
         end
         
         if size(t_interp,2) < size(t_interp,1)
-            dataStruct(length(Files)+1).t_average = t_interp';
+            dataStruct(n_rows+1).t_average = t_interp';
         else
-            dataStruct(length(Files)+1).t_average = t_interp;
+            dataStruct(n_rows+1).t_average = t_interp;
         end
 
         % Sanity check --- should be the same as the datasets' dt
-        dataStruct(length(Files)+1).dt = mean(diff(dataStruct(length(Files)+1).t_average));
+        dataStruct(n_rows+1).dt = mean(diff(dataStruct(n_rows+1).t_average));
 
     else
                 
         % Loop through unique velocities
-        for j=1:length(v_unique)
+        for j = 1:length(v_unique)
             
             % Find files corresponding to current velocity
             velInd = zeros(1,N);
@@ -628,7 +734,7 @@ if length(Files) > 1
             minRepFile = fileInds(temp);
             [endNum,~] = min(maxVal(velInd==1));
                         
-            xi = startNum:median(dtVal):endNum;  % Create Vector Of Common time values
+            xi = (startNum:median(dtVal):endNum)';  % Create Vector Of Common time values
             di = [];
             zi = [];
             ti = [];
@@ -642,14 +748,19 @@ if length(Files) > 1
             
             if sum(v_approach(:) == v_unique(j)) > 1
                 % Loop through all files
-                for k=1:length(Files)
+                for k = 1:n_rows
                     % Grab the tip radius for this velocity and 
 
                     % Check if this file is relevant for this specific
                     % averaging operation
                     if v_approach(k) == v_unique(j)
-                        shiftVal = (dataStruct(k).t_approach(tip_rep_pos_all(k)+dataStruct(k).dSmoothMin) - ...
-                            dataStruct(minRepFile).t_approach(minRepInd));
+                        if k == minRepFile
+                            adjustInd = 1;
+                        else
+                            adjustInd = 0;
+                        end
+                        shiftVal = (dataStruct(k).t_approach(tip_rep_pos_all(k)+dataStruct(k).dSmoothMin-1) - ...
+                            dataStruct(minRepFile).t_approach(minRepInd-adjustInd));
                         
                         [tempz, ~] = unique(dataStruct(k).t_approach - shiftVal);
 
@@ -660,7 +771,7 @@ if length(Files) > 1
                             xi(:), 'linear', NaN)); % Interploate z-sensor to new �x� Values
 
                         % Create an associated time array for averaging
-                        ti =  vertcat(ti, xi);
+                        ti =  horzcat(ti, xi);
                         
                         % Hold on to the data lengths so we can keep track
                         % of which files are worst and should be ignored.
@@ -687,24 +798,24 @@ if length(Files) > 1
                 velIndRef = find(velInd);
                 
                 if size(dataStruct(velIndRef).z_corrected,2) < size(dataStruct(velIndRef).z_corrected,1)
-                    dataStruct(length(Files)+j).z_average = dataStruct(velIndRef).z_corrected';
+                    dataStruct(n_rows+j).z_average = dataStruct(velIndRef).z_corrected';
                 else
-                    dataStruct(length(Files)+j).z_average = dataStruct(velIndRef).z_corrected;
+                    dataStruct(n_rows+j).z_average = dataStruct(velIndRef).z_corrected;
                 end
                 
                 if size(dataStruct(velIndRef).d_corrected,2) < size(dataStruct(velIndRef).d_corrected,1)
-                    dataStruct(length(Files)+j).d_average = dataStruct(velIndRef).d_corrected';
+                    dataStruct(n_rows+j).d_average = dataStruct(velIndRef).d_corrected';
                 else
-                    dataStruct(length(Files)+j).d_average = dataStruct(velIndRef).d_corrected;
+                    dataStruct(n_rows+j).d_average = dataStruct(velIndRef).d_corrected;
                 end
                 
                 if size(dataStruct(velIndRef).t_approach,2) < size(dataStruct(velIndRef).t_approach,1)
-                    dataStruct(length(Files)+j).t_average = dataStruct(velIndRef).t_approach';
+                    dataStruct(n_rows+j).t_average = dataStruct(velIndRef).t_approach';
                 else
-                    dataStruct(length(Files)+j).t_average = dataStruct(velIndRef).t_approach;
+                    dataStruct(n_rows+j).t_average = dataStruct(velIndRef).t_approach;
                 end
                 
-                dataStruct(length(Files)+j).dt = dataStruct(velIndRef).dt;
+                dataStruct(n_rows+j).dt = dataStruct(velIndRef).dt;
                 continue;
                 
             end
@@ -713,9 +824,9 @@ if length(Files) > 1
             % Interpolate according to the variance in the time array that
             % comes from averaging the results.
             t_interp = (1:size(ti,2))*median(dtVal);
-            z_interp = interp1(mean(ti,1), mean(zi,1),...
+            z_interp = interp1(mean(ti,2), mean(zi,2),...
                     t_interp, 'linear', NaN); % Interploate To New Time Values
-            d_interp = interp1(mean(ti,1), mean(di,1),...
+            d_interp = interp1(mean(ti,2), mean(di,2),...
                     t_interp, 'linear', NaN); % Interploate To New Time Values
             
             nanCheck = isnan(reshape(t_interp,length(t_interp),1)) +...
@@ -728,25 +839,25 @@ if length(Files) > 1
             d_interp(nanCheck == 1) = [];
                 
             if size(z_interp,2) < size(z_interp,1)
-                dataStruct(length(Files)+j).z_average = z_interp';
+                dataStruct(n_rows+j).z_average = z_interp';
             else
-                dataStruct(length(Files)+j).z_average = z_interp;
+                dataStruct(n_rows+j).z_average = z_interp;
             end
 
             if size(d_interp,2) < size(d_interp,1)
-                dataStruct(length(Files)+j).d_average = d_interp';
+                dataStruct(n_rows+j).d_average = d_interp';
             else
-                dataStruct(length(Files)+j).d_average = d_interp;
+                dataStruct(n_rows+j).d_average = d_interp;
             end
 
             if size(t_interp,2) < size(t_interp,1)
-                dataStruct(length(Files)+j).t_average = t_interp';
+                dataStruct(n_rows+j).t_average = t_interp';
             else
-                dataStruct(length(Files)+j).t_average = t_interp;
+                dataStruct(n_rows+j).t_average = t_interp;
             end
             
             % Sanity check --- should be the same as the datasets' dt
-            dataStruct(length(Files)+j).dt = mean(diff(dataStruct(length(Files)+1).t_average));
+            dataStruct(n_rows+j).dt = mean(diff(dataStruct(n_rows+1).t_average));
             
         end
     end
@@ -754,31 +865,31 @@ if length(Files) > 1
 else
     % There is only one file being analyzed, so simply copy over the data
     % to the "average" row.
-    dataStruct(length(Files)+1).z_average = dataStruct(1).z_corrected;
-    dataStruct(length(Files)+1).d_average = dataStruct(1).d_corrected;
-    dataStruct(length(Files)+1).t_average = dataStruct(1).t_approach;
-    dataStruct(length(Files)+1).dt = dataStruct(1).dt;
+    dataStruct(n_rows+1).z_average = dataStruct(1).z_corrected;
+    dataStruct(n_rows+1).d_average = dataStruct(1).d_corrected;
+    dataStruct(n_rows+1).t_average = dataStruct(1).t_approach;
+    dataStruct(n_rows+1).dt = dataStruct(1).dt;
     r_tip_array(1) = (cell2mat({dataStruct(1).r_tip}));
     nu_sample_array(1) = (cell2mat({dataStruct(1).nu_sample}));
 end
 
 % Pre-Processing for Averaged Data of all load levels.
 for i = 1:length(v_unique)
-    
+        
     % Store the tip radius in this row for reference later
-    dataStruct(length(Files)+i).r_tip = r_tip_array(i);
-    dataStruct(length(Files)+i).nu_sample = nu_sample_array(i);
+    dataStruct(n_rows+i).r_tip = r_tip_array(i);
+    dataStruct(n_rows+i).nu_sample = nu_sample_array(i);
     
     % Find the approach portion of the data. This is only really necessary
     % if the average data happens to go past the limit of all the datasets
     % for some reason.
-    [~, z_max_ind] = max(dataStruct(length(Files)+i).z_average);
+    [~, z_max_ind] = max(dataStruct(n_rows+i).z_average);
     
     if ~includeRetract
-        dataStruct(length(Files)+i).z_approach = dataStruct(length(Files)+i).z_average(1:z_max_ind);
-        dataStruct(length(Files)+i).d_approach = dataStruct(length(Files)+i).d_average(1:z_max_ind);
+        dataStruct(n_rows+i).z_approach = dataStruct(n_rows+i).z_average(1:z_max_ind);
+        dataStruct(n_rows+i).d_approach = dataStruct(n_rows+i).d_average(1:z_max_ind);
     else
-        F_temp = dataStruct(length(Files)+i).d_average(z_max_ind:end) .* mean(k_cantilever);
+        F_temp = dataStruct(n_rows+i).d_average(z_max_ind:end) .* mean(k_cantilever);
         if ~isempty(F_temp) && length(F_temp) > 1
             non_contact_ind = find(F_temp < 0,1);
             if isempty(non_contact_ind) non_contact_ind = length(F_temp)-1; end
@@ -786,30 +897,30 @@ for i = 1:length(v_unique)
             non_contact_ind = 0;
         end
         z_max_ind = non_contact_ind+z_max_ind;
-        dataStruct(length(Files)+i).z_approach = dataStruct(length(Files)+i).z_average(1:z_max_ind);
-        dataStruct(length(Files)+i).d_approach = dataStruct(length(Files)+i).d_average(1:z_max_ind);
+        dataStruct(n_rows+i).z_approach = dataStruct(n_rows+i).z_average(1:z_max_ind);
+        dataStruct(n_rows+i).d_approach = dataStruct(n_rows+i).d_average(1:z_max_ind);
     end
     
     % Filter and Shift z_sensor data
     switch filterType
         case 'butter'
             % Create the butterworth
-            [b,a] = butter(N,(cutoff_Hz)/(1/(2*dataStruct(length(Files)+i).dt)),'low'); % This makes a lowpass filter
-            d_approach_smooth = (filter(b,a,dataStruct(length(Files)+i).d_approach)); % Next, apply the filter
+            [b,a] = butter(N,(cutoff_Hz)/(1/(2*dataStruct(n_rows+i).dt)),'low'); % This makes a lowpass filter
+            d_approach_smooth = (filter(b,a,dataStruct(n_rows+i).d_approach)); % Next, apply the filter
     
             [~, dSmoothMin] = min(d_approach_smooth);   
-            z_approach_smooth = dataStruct(length(Files)+i).z_approach;
+            z_approach_smooth = dataStruct(n_rows+i).z_approach;
         
         case {'IIR','FIR'}
             % Use an IIR or FIR filter on the data
-            Fs = 1/(dataStruct(length(Files)+i).dt); 
+            Fs = 1/(dataStruct(n_rows+i).dt); 
             Fstop = 100*( (round((v_unique(i)),2,'significant')...
                 /round(max(v_unique),2,'significant'))...
-                /dataStruct(length(Files)+i).dt );
-            if Fstop >= 1/(3*dataStruct(length(Files)+i).dt)
-                Fstop = 1/(3*dataStruct(length(Files)+i).dt);
-            elseif Fstop < 1/(10*dataStruct(length(Files)+i).dt)
-                Fstop = 1/(10*dataStruct(length(Files)+i).dt);
+                /dataStruct(n_rows+i).dt );
+            if Fstop >= 1/(3*dataStruct(n_rows+i).dt)
+                Fstop = 1/(3*dataStruct(n_rows+i).dt);
+            elseif Fstop < 1/(10*dataStruct(n_rows+i).dt)
+                Fstop = 1/(10*dataStruct(n_rows+i).dt);
             end
             Fpass = Fstop*0.01;
             Rp = 0.01;
@@ -822,7 +933,7 @@ for i = 1:length(v_unique)
                                      'StopbandAttenuation',Astop);
             delay = floor(mean(grpdelay(LPF)));
 
-            d_approach_smooth = LPF(dataStruct(length(Files)+i).d_approach);         % Smooth with IIR filter
+            d_approach_smooth = LPF(dataStruct(n_rows+i).d_approach);         % Smooth with IIR filter
 
             % Correct filter delay
             sf = d_approach_smooth;
@@ -830,22 +941,22 @@ for i = 1:length(v_unique)
             
             [~, dSmoothMin] = min(sf);
             d_approach_smooth = sf;
-            z_approach_smooth = dataStruct(length(Files)+i).z_approach((delay+1):end);
+            z_approach_smooth = dataStruct(n_rows+i).z_approach((delay+1):end);
 
         case 'none'
             % Apply no filtering
-            d_approach_smooth = dataStruct(length(Files)+i).d_approach;
+            d_approach_smooth = dataStruct(n_rows+i).d_approach;
             delay = 0;
             
             [~, dSmoothMin] = min(d_approach_smooth);   
-            z_approach_smooth = dataStruct(length(Files)+i).z_approach;
+            z_approach_smooth = dataStruct(n_rows+i).z_approach;
         
     end
        
-    t_rep = dataStruct(length(Files)+i).t_average(dSmoothMin:z_max_ind);
-    z_rep = dataStruct(length(Files)+i).z_average(dSmoothMin:z_max_ind);
-    d_rep = dataStruct(length(Files)+i).d_average(dSmoothMin:z_max_ind);
-    t_rep_smooth = dataStruct(length(Files)+i).t_average(dSmoothMin:(z_max_ind-delay));
+    t_rep = dataStruct(n_rows+i).t_average(dSmoothMin:z_max_ind);
+    z_rep = dataStruct(n_rows+i).z_average(dSmoothMin:z_max_ind);
+    d_rep = dataStruct(n_rows+i).d_average(dSmoothMin:z_max_ind);
+    t_rep_smooth = dataStruct(n_rows+i).t_average(dSmoothMin:(z_max_ind-delay));
     z_rep_smooth = z_approach_smooth(dSmoothMin:(z_max_ind-delay));
     d_rep_smooth = d_approach_smooth(dSmoothMin:(z_max_ind-delay));
     
@@ -867,20 +978,20 @@ for i = 1:length(v_unique)
     end
     
     % Find the repulsive portion (force application) region
-    dataStruct(length(Files)+i).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos);
-    dataStruct(length(Files)+i).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos);
-    dataStruct(length(Files)+i).d_r = d_rep(tip_rep_pos:end) - d_rep(tip_rep_pos);
+    dataStruct(n_rows+i).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos);
+    dataStruct(n_rows+i).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos);
+    dataStruct(n_rows+i).d_r = d_rep(tip_rep_pos:end) - d_rep(tip_rep_pos);
     t_r_smooth = t_rep_smooth(tip_rep_pos_smooth:end) - t_rep_smooth(tip_rep_pos_smooth);
     z_r_smooth = z_rep_smooth(tip_rep_pos_smooth:end) - z_rep_smooth(tip_rep_pos_smooth);
     d_r_smooth = d_rep_smooth(tip_rep_pos_smooth:end) - d_rep_smooth(tip_rep_pos_smooth);
     
     % Calculate Force and Indentation during Repulsive Portion
-    dataStruct(length(Files)+i).F_r = dataStruct(length(Files)+i).d_r .* mean(k_cantilever);
-    dataStruct(length(Files)+i).h_r = dataStruct(length(Files)+i).z_r - dataStruct(length(Files)+i).d_r; % Calculate Indentation
+    dataStruct(n_rows+i).F_r = dataStruct(n_rows+i).d_r .* mean(k_cantilever);
+    dataStruct(n_rows+i).h_r = dataStruct(n_rows+i).z_r - dataStruct(n_rows+i).d_r; % Calculate Indentation
     
-    dataStruct(length(Files)+i).z_max_ind = z_max_ind;
-    dataStruct(length(Files)+i).z_max_ind_smooth = z_max_ind - delay;
-    dataStruct(length(Files)+i).dSmoothMin = dSmoothMin;
+    dataStruct(n_rows+i).z_max_ind = z_max_ind;
+    dataStruct(n_rows+i).z_max_ind_smooth = z_max_ind - delay;
+    dataStruct(n_rows+i).dSmoothMin = dSmoothMin;
     
     % Create smooth Force and Indentation
     k = 1;
@@ -896,43 +1007,43 @@ for i = 1:length(v_unique)
         end
     end
     
-    dataStruct(length(Files)+i).t_r_smooth = t_r_smooth;
-    dataStruct(length(Files)+i).z_r_smooth = z_r_smooth;
-    dataStruct(length(Files)+i).d_r_smooth = d_r_smooth;
-    dataStruct(length(Files)+i).F_r_smooth = d_r_smooth .* k_avg; % Calculate Smooth Force
-    dataStruct(length(Files)+i).h_r_smooth = z_r_smooth - d_r_smooth; % Calculate Smooth Indentation
+    dataStruct(n_rows+i).t_r_smooth = t_r_smooth;
+    dataStruct(n_rows+i).z_r_smooth = z_r_smooth;
+    dataStruct(n_rows+i).d_r_smooth = d_r_smooth;
+    dataStruct(n_rows+i).F_r_smooth = d_r_smooth .* k_avg; % Calculate Smooth Force
+    dataStruct(n_rows+i).h_r_smooth = z_r_smooth - d_r_smooth; % Calculate Smooth Indentation
     
     if removeNegatives
         % Original
-        toRemove = (dataStruct(length(Files)+i).h_r <= 0 | dataStruct(length(Files)+i).F_r <= 0);
-        dataStruct(length(Files)+i).t_r(toRemove) = [];
-        dataStruct(length(Files)+i).z_r(toRemove) = [];
-        dataStruct(length(Files)+i).d_r(toRemove) = [];
-        dataStruct(length(Files)+i).F_r(toRemove) = [];
-        dataStruct(length(Files)+i).h_r(toRemove) = [];
+        toRemove = (dataStruct(n_rows+i).h_r <= 0 | dataStruct(n_rows+i).F_r <= 0);
+        dataStruct(n_rows+i).t_r(toRemove) = [];
+        dataStruct(n_rows+i).z_r(toRemove) = [];
+        dataStruct(n_rows+i).d_r(toRemove) = [];
+        dataStruct(n_rows+i).F_r(toRemove) = [];
+        dataStruct(n_rows+i).h_r(toRemove) = [];
     
         % Smooth
-        toRemove = (dataStruct(length(Files)+i).h_r_smooth <= 0 | dataStruct(length(Files)+i).F_r_smooth <= 0);
-        dataStruct(length(Files)+i).t_r_smooth(toRemove) = [];
-        dataStruct(length(Files)+i).z_r_smooth(toRemove) = [];
-        dataStruct(length(Files)+i).d_r_smooth(toRemove) = [];
-        dataStruct(length(Files)+i).F_r_smooth(toRemove) = [];
-        dataStruct(length(Files)+i).h_r_smooth(toRemove) = [];
+        toRemove = (dataStruct(n_rows+i).h_r_smooth <= 0 | dataStruct(n_rows+i).F_r_smooth <= 0);
+        dataStruct(n_rows+i).t_r_smooth(toRemove) = [];
+        dataStruct(n_rows+i).z_r_smooth(toRemove) = [];
+        dataStruct(n_rows+i).d_r_smooth(toRemove) = [];
+        dataStruct(n_rows+i).F_r_smooth(toRemove) = [];
+        dataStruct(n_rows+i).h_r_smooth(toRemove) = [];
     end
     
     % Change to Logarithmic Scaling to use Enrique et al.'s Fit Method
-    tr = dataStruct(length(Files)+i).dt;
-    st = dataStruct(length(Files)+i).t_r(end);
+    tr = dataStruct(n_rows+i).dt;
+    st = dataStruct(n_rows+i).t_r(end);
 
     F_log = [];
     t_log = [];
 
-    F_log = log_scale(dataStruct(length(Files)+i).F_r,dataStruct(length(Files)+i).t_r,tr,st);
-    t_log = log_scale(dataStruct(length(Files)+i).t_r,dataStruct(length(Files)+i).t_r,tr,st);
+    F_log = log_scale(dataStruct(n_rows+i).F_r,dataStruct(n_rows+i).t_r,tr,st);
+    t_log = log_scale(dataStruct(n_rows+i).t_r,dataStruct(n_rows+i).t_r,tr,st);
     
     % Save the Log-Form of the tip force (F) and time array (t_r)
-    dataStruct(length(Files)+i).F_r_log = F_log;
-    dataStruct(length(Files)+i).t_r_log = t_log;
+    dataStruct(n_rows+i).F_r_log = F_log;
+    dataStruct(n_rows+i).t_r_log = t_log;
 
 end
 

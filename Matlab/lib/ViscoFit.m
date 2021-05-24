@@ -810,6 +810,9 @@ classdef ViscoFit
             else
                 % Get the current pool
                 poolobj = gcp('nocreate');
+                
+                % Clean up the workers (memory management)
+                parfevalOnAll(poolobj, @clearvars, 0);
             end
 
             % Start the timer
@@ -1283,6 +1286,9 @@ classdef ViscoFit
             else
                 % Get the current pool
                 poolobj = gcp('nocreate');
+                
+                % Clean up the workers (memory management)
+                parfevalOnAll(poolobj, @clearvars, 0);
             end
             
             % Start the timer

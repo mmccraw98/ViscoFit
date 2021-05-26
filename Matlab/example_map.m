@@ -44,7 +44,7 @@ for i_dir = 1:length(Folders)
     
     % Alternatively, set those values manually
     minTimescale = 1e-4;                    % This is the time value on which the first viscoelastic element will be centered
-    tipGeom = "conical";                  % The experiment tip geometry for the files that are being loaded
+    tipGeom = "conical";                    % The experiment tip geometry for the files that are being loaded
     
     % Settings for how to use the loaded data during analysis
     useSmoothData = 0;                      % The user can choose to use filtered data, or the original raw data for fitting
@@ -55,9 +55,11 @@ for i_dir = 1:length(Folders)
     
     % Required Settings:
     loadDataSettings.includeRetract = 0;             % Don't include data from the retract curve
-    loadDataSettings.filterType = 'none';            % Choose the filter used to smooth data
-    loadDataSettings.findRep = 'forward';            % Search direction for the repulsive region
-    loadDataSettings.removeNegatives = 1;            % Remove negative values in the data stream
+    loadDataSettings.filterType = 'FIR';             % Choose the filter used to smooth data
+    loadDataSettings.findRep = 'reverse';            % Search direction for the repulsive region
+    loadDataSettings.removeNegatives = true;         % Remove negative values in the data stream
+    loadDataSettings.createAverage = false;          % Create averaged rows at the END of the datastruct
+    loadDataSettings.preSmoothZ = false;             % Use smoothed Z-piezo data to find maximum extension
     
     % Conditional Settings (depending on filter):
     loadDataSettings.N = 2;                          % Order of Butterworth filter (if used)
@@ -74,7 +76,7 @@ for i_dir = 1:length(Folders)
     numFiles = 0;
     avgCount = 0;
     for i = 1:size(dataStruct,2)
-        if isempty(dataStruct(i).t_average)
+        if ~isempty(dataStruct(i).z)
             numFiles = numFiles + 1;
         else
             avgCount = avgCount + 1;
@@ -83,6 +85,9 @@ for i_dir = 1:length(Folders)
 
     % Get our offsets, knowing how many files and averages there are
     if useAveragedData
+        if avgCount == 0
+            error('There are no averages in the dataStruct. You selected Averaged analysis. Please reload the data with "createAverage"==true.');
+        end
         indShift = numFiles;
         loopMax = avgCount;
     else

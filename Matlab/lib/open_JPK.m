@@ -599,6 +599,25 @@ elseif(strcmpi(extension,valid_extensions{4}))
         j=1;f=0;g=1;Conversion_Set_Id=0;Encoder_Id=0;
         clearvars header_metadata_split
         for i=1:size(header_metadata_raw,1)
+            if contains(header_metadata_raw{j,1},'0.settings.segment-settings.num-points')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempN(1) = str2num(temp{1,2});
+            elseif contains(header_metadata_raw{j,1},'0.settings.segment-settings.z-start')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempZStart(1) = str2num(temp{1,2});
+            elseif contains(header_metadata_raw{j,1},'0.settings.segment-settings.z-end')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempZEnd(1) = str2num(temp{1,2});
+            elseif contains(header_metadata_raw{j,1},'1.settings.segment-settings.num-points')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempN(2) = str2num(temp{1,2});
+            elseif contains(header_metadata_raw{j,1},'1.settings.segment-settings.z-start')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempZStart(2) = str2num(temp{1,2});
+            elseif contains(header_metadata_raw{j,1},'1.settings.segment-settings.z-end')
+                temp = strsplit(header_metadata_raw{j,1},'=');
+                tempZEnd(2) = str2num(temp{1,2});
+            end
             temp=strsplit(header_metadata_raw{i,1},'=');
             if(size(temp,2)==2)
                 temp_2=strsplit(temp{1,1},'.');
@@ -714,7 +733,7 @@ elseif(strcmpi(extension,valid_extensions{4}))
             end
 
             for j=1:size(Temp_InfoDir_Segments,1)
-
+                
                 fid=fopen(sprintf('ForceCurvesMatalabExtracted\\%s\\%s\\%d\\%s\\%s\\%s\\%s',FileName,'index',i_pix-1,'segments',InfoDir_Segments(folderToEval(1,i)).name,'channels',Temp_InfoDir_Segments(j).name));
                 flag_temp=fread(fid,'int32');
                 fclose(fid);
@@ -722,7 +741,7 @@ elseif(strcmpi(extension,valid_extensions{4}))
                 if(~strcmp(FC_Data(j).Channel_name,temp{1,1}))
                     error('Something whent wrong!!')
                 end
-
+                                
                 FC_Data(j).(Data_Type).(Channel_Name_Imprint_Raw) = flag_temp;
                 FC_Data(j).(Data_Type).(Channel_Name_Imprint_Encoded)=flag_temp*str2double(FC_Data(j).Encoded.Multiplier)+str2double(FC_Data(j).Encoded.Offset);
 
@@ -739,12 +758,9 @@ elseif(strcmpi(extension,valid_extensions{4}))
         
         % Store FC_data
         FC_Data_out(1).Channel_name = 'z';
-        idx = find(strcmpi({FC_Data.Channel_name},'height'));
-%         idx = find(strcmpi({FC_Data.Channel_name},'measuredHeight'));
-%         idx = find(strcmpi({FC_Data.Channel_name},'tipSampleSeparation'));
-        FC_Data_out(1).extend = FC_Data(idx).extend.Data_calibrated;
-        FC_Data_out(1).retract = FC_Data(idx).retract.Data_calibrated;
-        
+        FC_Data_out(1).extend = ((1:tempN(1))').*((tempZStart(1)-tempZEnd(1))/tempN(1));
+        FC_Data_out(1).retract = flip(((1:tempN(2))').*((tempZStart(2)-tempZEnd(2))/tempN(2)));
+
         FC_Data_out(2).Channel_name = 'd';
         idx = find(strcmpi({FC_Data.Channel_name},'vDeflection'));
         FC_Data_out(2).extend = -FC_Data(idx).extend.Data_distance;

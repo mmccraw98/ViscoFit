@@ -211,7 +211,7 @@ for k = 1:length(Files)
             % repository/manuscript. A license for that script is included
             % in this directory, and named IBWread_license.txt. Credit goes
             % to Jakub Bialek (2009).
-            RawData = IBWread([Files(k).folder '/' Files(k).name]);
+            RawData = IBWread([Files(k).folder filesep Files(k).name]);
             [headerValue,~] = strsplit(RawData.WaveNotes,'\r',...
             'DelimiterType','RegularExpression');
 
@@ -257,7 +257,7 @@ for k = 1:length(Files)
             % simulation (loaded here into RawData), and the other is a
             % settings file (used to perform the simulation, stored here in
             % settingsData).
-            RawData = load([Files(k).folder '/' Files(k).name],'z','d','t','F');
+            RawData = load([Files(k).folder filesep Files(k).name],'z','d','t','F');
                         
             settingsCheck=dir([pathname '/*.*']);
 
@@ -279,7 +279,7 @@ for k = 1:length(Files)
                 setInd = 1;
             end
             
-            settingsData = load([settingsCheck(setInd).folder '/' settingsCheck(setInd).name]);
+            settingsData = load([settingsCheck(setInd).folder filesep settingsCheck(setInd).name]);
             
             v_approach_temp = str2num(strrep(FileInfo{4},'-','.'))*1E-9;    % Approach Velocity, m/s
             point_number_temp = k;                                          % Position Number
@@ -316,12 +316,12 @@ for k = 1:length(Files)
             
             if isempty(oldMaps)
                 tic
-                fileStruct = open_JPK([Files(k).folder '/' Files(k).name]);
+                fileStruct = open_JPK([Files(k).folder filesep Files(k).name]);
                 loadTime = toc;
                 fprintf('\nIt took %6.2f minutes to load %s.\n',loadTime/60,Files(k).name)
-                save([Files(k).folder '/' sprintf('mapStruct-%s-%s.mat',FileInfo{1},FileInfo{2})],'fileStruct');
+                save([Files(k).folder filesep sprintf('mapStruct-%s-%s.mat',FileInfo{1},FileInfo{2})],'fileStruct');
             else
-                load([oldMaps.folder '/' oldMaps.name],'fileStruct'); % Load the previous filestruct!
+                load([oldMaps.folder filesep oldMaps.name],'fileStruct'); % Load the previous filestruct!
             end
             numPixels = length(fileStruct);
             indShift = size(dataStruct,2);
@@ -462,19 +462,19 @@ for k = 1:size(dataStruct,2)
             Fpass = Fstop*0.01;
             Rp = 0.01;
             Astop = 80;
-            LPF = dsp.LowpassFilter('SampleRate',Fs, ...
-                                     'FilterType',filterType, ...
-                                     'PassbandFrequency',Fpass, ...
-                                     'StopbandFrequency',Fstop, ...
-                                     'PassbandRipple',Rp, ...
-                                     'StopbandAttenuation',Astop);
-            delay = floor(mean(grpdelay(LPF)));
-            d_smooth = LPF(dataStruct(k).d_approach);
+%             LPF = dsp.LowpassFilter('SampleRate',Fs, ...
+%                                      'FilterType',filterType, ...
+%                                      'PassbandFrequency',Fpass, ...
+%                                      'StopbandFrequency',Fstop, ...
+%                                      'PassbandRipple',Rp, ...
+%                                      'StopbandAttenuation',Astop);
+%             delay = floor(mean(grpdelay(LPF)));
+%             d_smooth = LPF(dataStruct(k).d_approach);
 
-%             Nfilter = round((Fs/(Fstop-Fpass))*(Astop/22)); % "Fred Harris Rule of Thumb" for Filter Order
-%             firlo = fir1(Nfilter,0.5,'low');
-%             d_smooth = filter(firlo,1,dataStruct(k).d_approach);
-%             delay = floor(mean(grpdelay(firlo,Nfilter)));
+            Nfilter = round((Fs/(Fstop-Fpass))*(Astop/22)); % "Fred Harris Rule of Thumb" for Filter Order
+            firlo = fir1(Nfilter,0.5,'low');
+            d_smooth = filter(firlo,1,dataStruct(k).d_approach);
+            delay = floor(mean(grpdelay(firlo,Nfilter)));
 
             % Correct filter delay
             sf = d_smooth;

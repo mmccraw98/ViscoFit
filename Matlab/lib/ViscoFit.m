@@ -1460,7 +1460,6 @@ classdef ViscoFit
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
                                     [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(x,j,elasticSetting,fluidSetting),beta0,options);
-                                    hbar.iterate(1);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1482,7 +1481,6 @@ classdef ViscoFit
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
                                 [beta_dist(:,k),residual_dist(k)] = fminsearch(@(x)objFuncMap(x,j,elasticSetting,fluidSetting),beta0,options);
-                                hbar.iterate(1);
                             end
 
                         case 'annealing'
@@ -1518,7 +1516,6 @@ classdef ViscoFit
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
                                     [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(x,j,elasticSetting,fluidSetting),beta0,nelderopts);
-                                    hbar.iterate(1);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1540,7 +1537,6 @@ classdef ViscoFit
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
                                 [beta_dist(:,k),residual_dist(k)] = annealOpt(@(x)objFuncMap(x,j,elasticSetting,fluidSetting),beta0,annealopts,nelderopts);
-                                hbar.iterate(1);
                             end
 
                         case 'nls'
@@ -1566,7 +1562,6 @@ classdef ViscoFit
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
                                     [beta_dist_elastic(k),residual_dist_elastic(k)] = fmincon(@(x)objFuncMap(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
-                                    hbar.iterate(1);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1588,7 +1583,6 @@ classdef ViscoFit
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
                                 [beta_dist(:,k),residual_dist(k)] = fmincon(@(x)objFuncMap(x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb,ub,[],fminoptions);
-                                hbar.iterate(1);
                             end
 
                         otherwise
@@ -1610,6 +1604,8 @@ classdef ViscoFit
 
                     % Store the timing for this model configuration fit
                     fitTimeMap{j} = postFitting;
+                    
+                    hbar.iterate(1);
 
                 end % End Pixel Loop
                 close(hbar);

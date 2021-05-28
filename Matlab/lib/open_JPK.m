@@ -577,11 +577,6 @@ elseif(strcmpi(extension,valid_extensions{4}))
     FC_Data_all = cell(1,nPixels);
     
     % Begin loading all of the pixel data
-    % Note: we are not doing this in parallel, but we NEED feedback to see
-    % how the process is going.
-    progressString = sprintf('Loading Pixels from "%s"...',FileName);
-    hbar = parfor_progressbar(nPixels,progressString);
-    warning('off');
     for i_pix = 1:nPixels
                 
         if ~isfolder(sprintf('ForceCurvesMatalabExtracted\\%s\\index\\%d',FileName,i_pix-1)) || ...
@@ -811,12 +806,8 @@ elseif(strcmpi(extension,valid_extensions{4}))
         % Save the FC output structure to our master list and manage some
         % memory.
         FC_Data_all{i_pix} = FC_Data_out;
-        clearvars FC_Data FC_Data_out 
-        
-        hbar.iterate(1);
+        clearvars FC_Data FC_Data_out
     end
-    close(hbar);
-    warning('on');
     
     varargout{1}=FC_Data_all;
     

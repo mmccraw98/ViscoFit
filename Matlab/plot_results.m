@@ -2,8 +2,8 @@ clear all
 close all
 clc
 
-addpath(genpath([pwd '\lib']));
-addpath(genpath([pwd '\plotting']));
+addpath(genpath([pwd filesep 'lib']));
+addpath(genpath([pwd filesep 'plotting']));
 
 stillRunning = true;
 while stillRunning
@@ -35,7 +35,7 @@ while stillRunning
     % data, we should loop through all directories and analyze each in turn.
     if ~isempty(subFolders)
         Folders = cell(1,length(subFolders));
-        Folders = cellfun(@(root,sub)[root '\' sub],{subFolders.folder},{subFolders.name},'UniformOutput',false);
+        Folders = cellfun(@(root,sub)[root filesep sub],{subFolders.folder},{subFolders.name},'UniformOutput',false);
     else
         Folders = {originalPath};
     end
@@ -192,7 +192,7 @@ while stillRunning
         clearvars dataStruct
 
         for j_dir = 1:length(Files)
-            fitResults = load([Files(j_dir).folder '\' Files(j_dir).name],'-mat');
+            fitResults = load([Files(j_dir).folder filesep Files(j_dir).name],'-mat');
             dataLabels = fieldnames(fitResults);
             resultsContainer = cell(numel(dataLabels),1);
             for j = 1:numel(dataLabels)

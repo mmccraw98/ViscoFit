@@ -2,7 +2,7 @@ clear all
 close all
 clc
 
-addpath(genpath([pwd '\lib']));
+addpath(genpath([pwd filesep 'lib']));
 
 % Pick the AFM Data Directory and Choose Data Extraction Settings
 originalPath = uigetdir(pwd,...
@@ -17,7 +17,7 @@ subFolders(contains({subFolders.name}, {'.','..','Plots'})) = [];
 % data, we should loop through all directories and analyze each in turn.
 if ~isempty(subFolders)
     Folders = cell(1,length(subFolders));
-    Folders = cellfun(@(root,sub)[root '\' sub],{subFolders.folder},{subFolders.name},'UniformOutput',false);
+    Folders = cellfun(@(root,sub)[root filesep sub],{subFolders.folder},{subFolders.name},'UniformOutput',false);
 else
     Folders = {originalPath};
 end
@@ -186,9 +186,9 @@ for i_dir = 1:length(Folders)
         set(gca,'xscale','log','yscale','log')
         hold off
     end
-    saveas(resultsFigNelder,[path '\PlotResults-NelderMead.jpg']);
-    saveas(resultsFigNelder,[path '\PlotResults-NelderMead.fig']);
-    save([path '\FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
+    saveas(resultsFigNelder,[path filesep 'PlotResults-NelderMead.jpg']);
+    saveas(resultsFigNelder,[path filesep 'PlotResults-NelderMead.fig']);
+    save([path filesep 'FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
 
     % Test the Fitting Functions using Simulated Annealing with Nelder-Mead
     % Create the class object
@@ -251,9 +251,9 @@ for i_dir = 1:length(Folders)
         set(gca,'xscale','log','yscale','log')
         hold off
     end
-    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.jpg']);
-    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.fig']);
-    save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
+    saveas(resultsFigAnnealing,[path filesep 'PlotResults-Annealing.jpg']);
+    saveas(resultsFigAnnealing,[path filesep 'PlotResults-Annealing.fig']);
+    save([path filesep 'FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
 
     % Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
     % Create the class object
@@ -316,9 +316,9 @@ for i_dir = 1:length(Folders)
         set(gca,'xscale','log','yscale','log')
         hold off
     end
-    saveas(resultsFigNLS,[path '\PlotResults-NLS.jpg']);
-    saveas(resultsFigNLS,[path '\PlotResults-NLS.fig']);
-    save([path '\FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')
+    saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.jpg']);
+    saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.fig']);
+    save([path filesep 'FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')
     
 end
 

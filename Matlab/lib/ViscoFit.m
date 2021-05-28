@@ -733,21 +733,42 @@ classdef ViscoFit
             fluidSetting = 0;           % No Steady-State Fluidity
             n_iterations = 100;         % Use 100 random initializations as a default
             n_fitIterations = 1e4;      % No. of iterations for solver
-            errortype = 'sse';           % Error model to use
+            errortype = 'sse';          % Error model to use
+            N_workers = [];             % Number of workers for parpool
+            
             if ~isempty(varargin)
                 % Only one varargin is accepted, and it is a structure
                 % containing all of the settings information we require
                 fitOpts = varargin{1};
                 
                 % Get the settings provided
-                solver = lower(fitOpts.solver);
-                model = lower(fitOpts.model);
-                n_elements = fitOpts.n_elements;
-                elasticSetting = fitOpts.elasticSetting;
-                fluidSetting = fitOpts.fluidSetting;
-                n_iterations = fitOpts.n_iterations;
-                n_fitIterations = fitOpts.n_fitIterations;
-                errortype = fitOpts.errortype;
+                try
+                    solver = lower(fitOpts.solver);
+                end
+                try
+                    model = lower(fitOpts.model);
+                end
+                try
+                    n_elements = fitOpts.n_elements;
+                end
+                try
+                    elasticSetting = fitOpts.elasticSetting;
+                end
+                try
+                    fluidSetting = fitOpts.fluidSetting;
+                end
+                try
+                    n_iterations = fitOpts.n_iterations;
+                end
+                try
+                    n_fitIterations = fitOpts.n_fitIterations;
+                end
+                try
+                    errortype = fitOpts.errortype;
+                end
+                try
+                    N_workers = fitOpts.N_workers;
+                end
                 if strcmpi(solver,'custom')
                     if isfield(fitOpts,'customFunc')
                         customFunc = fitOpts.customFunc;
@@ -801,7 +822,11 @@ classdef ViscoFit
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
                 % Make a fresh pool
-                poolobj = parpool('IdleTimeout', 120);
+                if isempty(N_workers)
+                    poolobj = parpool('IdleTimeout', 120);
+                else
+                    poolobj = parpool(N_workers,'IdleTimeout', 120);
+                end
                 
                 % Send the class to the workers
                 addAttachedFiles(poolobj, {'ViscoFit.m','LR_Maxwell.m','LR_Voigt.m','LR_PLR.m'})
@@ -1206,19 +1231,37 @@ classdef ViscoFit
             fluidSetting = 0;           % No Steady-State Fluidity
             n_iterations = 100;         % Use 100 random initializations
             n_fitIterations = 1e4;      % No. of iterations for solver
+            N_workers = [];             % Number of workers for parpool
             if ~isempty(varargin)
                 % Only one varargin is accepted, and it is a structure
                 % containing all of the settings information we require
                 fitOpts = varargin{1};
                 
                 % Get the settings provided
-                solver = lower(fitOpts.solver);
-                model = lower(fitOpts.model);
-                n_elements = fitOpts.n_elements;
-                elasticSetting = fitOpts.elasticSetting;
-                fluidSetting = fitOpts.fluidSetting;
-                n_iterations = fitOpts.n_iterations;
-                n_fitIterations = fitOpts.n_fitIterations;
+                try
+                    solver = lower(fitOpts.solver);
+                end
+                try
+                    model = lower(fitOpts.model);
+                end
+                try
+                    n_elements = fitOpts.n_elements;
+                end
+                try
+                    elasticSetting = fitOpts.elasticSetting;
+                end
+                try
+                    fluidSetting = fitOpts.fluidSetting;
+                end
+                try
+                    n_iterations = fitOpts.n_iterations;
+                end
+                try
+                    n_fitIterations = fitOpts.n_fitIterations;
+                end
+                try
+                    N_workers = fitOpts.N_workers;
+                end
                 if strcmpi(solver,'custom')
                     if isfield(fitOpts,'customFunc')
                         customFunc = fitOpts.customFunc;
@@ -1284,7 +1327,11 @@ classdef ViscoFit
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
                 % Make a fresh pool
-                poolobj = parpool('IdleTimeout', 120);
+                if isempty(N_workers)
+                    poolobj = parpool('IdleTimeout', 120);
+                else
+                    poolobj = parpool(N_workers,'IdleTimeout', 120);
+                end
                 
                 % Send the class to the workers
                 addAttachedFiles(poolobj, {'ViscoFit.m','LR_Maxwell.m','LR_Voigt.m','LR_PLR.m'})

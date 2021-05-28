@@ -38,7 +38,7 @@ switch tipGeom
         c = (8*sqrt(tipSize))./(3*(1-nu));
         beta = 1.5;
     case "conical"
-        c = (2*tan(tipSize))./(pi*(1-nu^2));
+        c = (2.*tan(tipSize))./(pi.*(1-nu.^2));
         beta = 2;
 end
 

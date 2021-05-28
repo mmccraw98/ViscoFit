@@ -32,7 +32,6 @@ cutoff_Hz = 5000;               % Cutoff frequency
 findRep = 'forward';            % Search direction for the repulsive region
 removeNegatives = true;         % Remove negative values in the data stream
 createAverage = true;           % Create the averaged rows for each approach vel.
-preSmoothZ = false;             % Pre-smooth the z data (helpful for noisy measurements)
 
 % Read varargin values
 if ~isempty(varargin)
@@ -57,9 +56,6 @@ if ~isempty(varargin)
         end
         try
             createAverage = inputSettings.createAverage;
-        end
-        try
-            preSmoothZ = inputSettings.preSmoothZ;
         end
         
         % Load conditional settings
@@ -335,34 +331,32 @@ for k = 1:length(Files)
             end
             
             for i_pix = (1:numPixels)
+                % Store MapID
                 dataStruct(i_pix+indShift).mapID = k;
                 
+                % Store the Z-Extension measurements from the map
                 idx = find(contains({fileStruct{i_pix}(:).Channel_name},'z'),1);
                 dataStruct(i_pix+indShift).z = fileStruct{i_pix}(idx).extend;
-                if includeRetract
-                    dataStruct(i_pix+indShift).z = vertcat(dataStruct(i_pix+indShift).z,fileStruct{i_pix}(idx).retract);
-                end
+                dataStruct(i_pix+indShift).z = vertcat(dataStruct(i_pix+indShift).z,fileStruct{i_pix}(idx).retract);
 
+                % Store the deflection
                 idx = find(contains({fileStruct{i_pix}(:).Channel_name},'d'),1);
                 dataStruct(i_pix+indShift).d = fileStruct{i_pix}(idx).extend;
-                if includeRetract
-                    dataStruct(i_pix+indShift).d = vertcat(dataStruct(i_pix+indShift).d,fileStruct{i_pix}(idx).retract);
-                end
+                dataStruct(i_pix+indShift).d = vertcat(dataStruct(i_pix+indShift).d,fileStruct{i_pix}(idx).retract);
                 
+                % Store the Force
                 idx = find(contains({fileStruct{i_pix}(:).Channel_name},'F'),1);
                 dataStruct(i_pix+indShift).F = fileStruct{i_pix}(idx).extend;
-                if includeRetract
-                    dataStruct(i_pix+indShift).F = vertcat(dataStruct(i_pix+indShift).F,fileStruct{i_pix}(idx).retract);
-                end
+                dataStruct(i_pix+indShift).F = vertcat(dataStruct(i_pix+indShift).F,fileStruct{i_pix}(idx).retract);
 
+                % Store the time array. Use the timestep (dt) to calculate
+                % the retract time, too.
                 idx = find(contains({fileStruct{i_pix}(:).Channel_name},'t'),1);
                 dataStruct(i_pix+indShift).t = fileStruct{i_pix}(idx).extend;
                 if isrow(dataStruct(i_pix+indShift).t)  dataStruct(i_pix+indShift).t =  dataStruct(i_pix+indShift).t'; end
                 dataStruct(i_pix+indShift).dt = mode(round(gradient(dataStruct(i_pix+indShift).t),3,'significant'));
-                if includeRetract
-                    dataStruct(i_pix+indShift).t = vertcat( dataStruct(i_pix+indShift).t,...
-                        (dataStruct(i_pix+indShift).dt.*(1:length(fileStruct{i_pix}(idx).retract))'+dataStruct(i_pix+indShift).t(end)) );
-                end
+                dataStruct(i_pix+indShift).t = vertcat( dataStruct(i_pix+indShift).t,...
+                    (dataStruct(i_pix+indShift).dt.*(1:length(fileStruct{i_pix}(idx).retract))'+dataStruct(i_pix+indShift).t(end)) );
                 
                 v_approach(i_pix) = round(abs(mean(gradient(dataStruct(i_pix+indShift).z)./dataStruct(i_pix+indShift).dt)),2,'significant');  % Approach Velocity, m/s
                 
@@ -389,33 +383,9 @@ end
 
 for k = 1:size(dataStruct,2)
     
-    % Pre-Processing
-    if preSmoothZ
-        Fs = 1/(dataStruct(k).dt); 
-        Fstop = ( (round((v_approach(k)),2,'significant')...
-            /round(max(v_approach),2,'significant'))...
-            /dataStruct(k).dt );
-        if Fstop >= 1/(2*dataStruct(k).dt)
-            Fstop = 1/(2.05*dataStruct(k).dt);
-        elseif Fstop < 1/(10*dataStruct(k).dt)
-            Fstop = 1/(10*dataStruct(k).dt);
-        end
-        Fpass = Fstop*0.01;
-        Astop = 80;
-        
-        Nfilter = round((Fs/(Fstop-Fpass))*(Astop/22)); % "Fred Harris Rule of Thumb" for Filter Order
-        firlo = fir1(Nfilter,0.5,'low');
-        z_smooth = filter(firlo,1,dataStruct(k).z);
-        delay = floor(mean(grpdelay(firlo,Nfilter)));
-        
-        % Correct filter delay
-        sf = z_smooth;
-        sf(1:delay) = [];
-        [~, z_max_ind] = max(sf);
-    else    
-        % Find the approach portion of the data    
-        [~, z_max_ind] = max(dataStruct(k).z);
-    end
+
+    % Find the approach portion of the data    
+    [~, z_max_ind] = max(dataStruct(k).z);
     
     % Make sure we are handling row vectors
     if ~isrow(dataStruct(k).z) dataStruct(k).z = dataStruct(k).z'; end
@@ -601,36 +571,36 @@ for k = 1:size(dataStruct,2)
     if strcmp(findRep,'forward')
         tip_rep_pos = find(tip_rep>0,1);                                   % Find first position above 0
         if isempty(tip_rep_pos) || tip_rep_pos == 0
-            tip_rep_pos = 1;
+            tip_rep_pos = 2;
         end
         
         tip_rep_pos_smooth = find(tip_rep_smooth>0,1);                     % Find first position above 0
         if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
-            tip_rep_pos_smooth = 1;
+            tip_rep_pos_smooth = 2;
         end
     elseif strcmp(findRep,'reverse')
         tip_rep_pos = (length(tip_rep) - find(flip(tip_rep)<0,1));       % Find last position above 0
         if isempty(tip_rep_pos) || tip_rep_pos == 0
-            tip_rep_pos = 1;
+            tip_rep_pos = 2;
         end
         
         tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flip(tip_rep_smooth)<0,1));   % Find last position above 0
         if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
-            tip_rep_pos_smooth = 1;
+            tip_rep_pos_smooth = 2;
         end
     end
     
     if tip_rep_pos_smooth > length(t_rep_smooth)
         tip_rep_pos_smooth = length(t_rep_smooth);
     end
-        
+    
     % Store the repulsive force application portion of the dataset.
-    dataStruct(k).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos);
-    dataStruct(k).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos);
-    dataStruct(k).d_r = d_rep(tip_rep_pos:end) - d_rep(tip_rep_pos);
-    dataStruct(k).t_r_smooth = t_rep_smooth(tip_rep_pos_smooth:end) - t_rep_smooth(tip_rep_pos_smooth);
-    dataStruct(k).z_r_smooth = z_rep_smooth(tip_rep_pos_smooth:end) - z_rep_smooth(tip_rep_pos_smooth);
-    dataStruct(k).d_r_smooth = d_rep_smooth(tip_rep_pos_smooth:end) - d_rep_smooth(tip_rep_pos_smooth);
+    dataStruct(k).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos-1);
+    dataStruct(k).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos-1);
+    dataStruct(k).d_r = d_rep(tip_rep_pos:end) - d_rep(tip_rep_pos-1);
+    dataStruct(k).t_r_smooth = t_rep_smooth(tip_rep_pos_smooth:end) - t_rep_smooth(tip_rep_pos_smooth-1);
+    dataStruct(k).z_r_smooth = z_rep_smooth(tip_rep_pos_smooth:end) - z_rep_smooth(tip_rep_pos_smooth-1);
+    dataStruct(k).d_r_smooth = d_rep_smooth(tip_rep_pos_smooth:end) - d_rep_smooth(tip_rep_pos_smooth-1);
     
     dataStruct(k).tip_rep_pos = tip_rep_pos;
     dataStruct(k).tip_rep_pos_smooth = tip_rep_pos_smooth;

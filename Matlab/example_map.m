@@ -59,7 +59,6 @@ for i_dir = 1:length(Folders)
     loadDataSettings.findRep = 'reverse';            % Search direction for the repulsive region
     loadDataSettings.removeNegatives = true;         % Remove negative values in the data stream
     loadDataSettings.createAverage = false;          % Create averaged rows at the END of the datastruct
-    loadDataSettings.preSmoothZ = false;             % Use smoothed Z-piezo data to find maximum extension
     
     % Conditional Settings (depending on filter):
     loadDataSettings.N = 2;                          % Order of Butterworth filter (if used)
@@ -116,6 +115,9 @@ for i_dir = 1:length(Folders)
         tipSize{i} = dataStruct(indShift+i).r_tip;
         nu{i} = dataStruct(indShift+i).nu_sample;
     end
+    
+    % Memory Management
+    clearvars dataStruct
 
     % Test the Fitting Functions using the Nelder-Mead Solver
     % Make a structure for our settings
@@ -136,21 +138,21 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'nelder-mead';             % Fit using Nelder-Mead Simplex
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 4;                     % Fit iteratively for up to 4 elements
+    fitSettings.n_elements = 3;                     % Fit iteratively for up to 4 elements
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
     fitSettings.n_iterations = 200;                 % Use 200 random initializations
-    fitSettings.n_fitIterations = 5e3;              % No. of iterations for solver
+    fitSettings.n_fitIterations = 2e3;              % No. of iterations for solver
     fitSettings.errortype = 'mse';                  % Use Mean-Squared Error during fitting
-    maxwellFit_NM = visco.fitData(fitSettings);
+    maxwellFit_NM = visco.fitMap(fitSettings);
 
     % Test the Voigt
     fitSettings.model = 'voigt';
-    voigtFit_NM = visco.fitData(fitSettings);
+    voigtFit_NM = visco.fitMap(fitSettings);
 
     % Test the PLR
     fitSettings.model = 'PLR';
-    PLRFit_NM = visco.fitData(fitSettings);
+    PLRFit_NM = visco.fitMap(fitSettings);
 
     % For a custum function, use the below code to pass the appropriate
     % function call to the fitting class. Note that an error will be thrown if
@@ -158,7 +160,7 @@ for i_dir = 1:length(Folders)
     % name in the settings.
     % fitSettings.model = 'custom';
     % fitSettings.customFunc = @customFuncName;
-    % customFit = visco.fitData(fitSettings);
+    % customFit = visco.fitMap(fitSettings);
 
     % Check out the results
     dts = cellfun(@(t) round(mode(gradient(t)),1,'significant').*ones(size(t)),times,'UniformOutput',false);
@@ -195,71 +197,6 @@ for i_dir = 1:length(Folders)
     saveas(resultsFigNelder,[path '\PlotResults-NelderMead.fig']);
     save([path '\FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
 
-    % Test the Fitting Functions using Simulated Annealing with Nelder-Mead
-    % Create the class object
-    % visco = ViscoFit(forces,times,indentations,tipSize,minTimescale,nu,tipGeom);
-
-    % Make a structure for our settings
-    % fitSettings = struct;
-
-    % Modify the settings to test the Maxwell
-    fitSettings.solver = 'annealing';               % Fit using Simulated Annealing
-    fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_iterations = 5;                   % Use 5 random initializations
-    fitSettings.n_fitIterations = 5e2;              % No. of iterations for solver
-    maxwellFit_Anneal = visco.fitData(fitSettings);
-
-    % Test the Voigt
-    fitSettings.model = 'voigt';
-    voigtFit_Anneal = visco.fitData(fitSettings);
-
-    % Test the PLR
-    fitSettings.model = 'PLR';
-    PLRFit_Anneal = visco.fitData(fitSettings);
-
-    % For a custum function, use the below code to pass the appropriate
-    % function call to the fitting class. Note that an error will be thrown if
-    % you select "custom" for the model type and then don't pass a function
-    % name in the settings.
-    % fitSettings.model = 'custom';
-    % fitSettings.customFunc = @customFuncName;
-    % customFit = visco.fitData(fitSettings);
-
-    % Check out the results
-    dts = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
-    switch tipGeom
-        case "spherical"
-            beta = 1.5;
-        case "conical"
-            beta = 2;
-    end
-    if exist('resultsFigAnnealing','var')
-        try
-            close(resultsFigAnnealing);
-        catch
-        end
-        clearvars resultsFigAnnealing
-    end
-    resultsFigAnnealing = figure('Position',[50 200 300*fitSettings.n_elements 600]);
-    for i = 1:fitSettings.n_elements
-        subplot(1,fitSettings.n_elements,i)
-        title(sprintf('%d Terms',i))
-        hold on
-        for j = 1:size(forces,2)
-            scatter(times{j},forces{j},50,'rx')
-            scatter(times{j},indentations{j}.^(beta),50,'bo')
-            plot(times{j},LR_Maxwell(maxwellFit_Anneal.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-            plot(times{j},LR_Voigt(voigtFit_Anneal.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
-            plot(times{j},LR_PLR(PLRFit_Anneal.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
-        end
-        grid on
-        set(gca,'xscale','log','yscale','log')
-        hold off
-    end
-    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.jpg']);
-    saveas(resultsFigAnnealing,[path '\PlotResults-Annealing.fig']);
-    save([path '\FitResults-Annealing.mat'],'maxwellFit_Anneal','voigtFit_Anneal','PLRFit_Anneal')
-
     % Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
     % Create the class object
     % visco = ViscoFit(forces,times,indentations,tipSize,minTimescale,nu,tipGeom);
@@ -272,15 +209,15 @@ for i_dir = 1:length(Folders)
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
     fitSettings.n_iterations = 200;                 % Use 200 random initializations
     fitSettings.n_fitIterations = 1e4;              % No. of iterations for solver
-    maxwellFit_NLS = visco.fitData(fitSettings);
+    maxwellFit_NLS = visco.fitMap(fitSettings);
 
     % Test the Voigt
     fitSettings.model = 'voigt';
-    voigtFit_NLS = visco.fitData(fitSettings);
+    voigtFit_NLS = visco.fitMap(fitSettings);
 
     % Test the PLR
     fitSettings.model = 'PLR';
-    PLRFit_NLS = visco.fitData(fitSettings);
+    PLRFit_NLS = visco.fitMap(fitSettings);
 
     % For a custum function, use the below code to pass the appropriate
     % function call to the fitting class. Note that an error will be thrown if
@@ -288,7 +225,7 @@ for i_dir = 1:length(Folders)
     % name in the settings.
     % fitSettings.model = 'custom';
     % fitSettings.customFunc = @customFuncName;
-    % customFit = visco.fitData(fitSettings);
+    % customFit = visco.fitMap(fitSettings);
 
     % Check out the results
     dts = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);

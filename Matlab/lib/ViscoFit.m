@@ -1262,19 +1262,24 @@ classdef ViscoFit
             % optimization attempts. These need to be pre-allocated to
             % allow proper parallelization of the pixels.
             fitStruct.bestParams = cell(1,n_elements);
-            fitStruct.bestParams(:) = cell(size(obj.forces_cell));
+            fitStruct.bestParams = cellfun(@(x)cell(size(obj.forces_cell)),...
+                fitStruct.bestParams,'UniformOutput',false);
             
             fitStruct.paramPopulation = cell(1,n_elements);
-            fitStruct.paramPopulation(:) = cell(size(obj.forces_cell));
+            fitStruct.paramPopulation = cellfun(@(x)cell(size(obj.forces_cell)),...
+                fitStruct.paramPopulation,'UniformOutput',false);
             
             fitStruct.paramPopulationResiduals = cell(1,n_elements);
-            fitStruct.paramPopulationResiduals(:) = cell(size(obj.forces_cell));
+            fitStruct.paramPopulationResiduals = cellfun(@(x)cell(size(obj.forces_cell)),...
+                fitStruct.paramPopulationResiduals,'UniformOutput',false);
             
             fitStruct.elasticFitTime = cell(1,n_elements);
-            fitStruct.elasticFitTime(:) = cell(size(obj.forces_cell));
+            fitStruct.elasticFitTime = cellfun(@(x)cell(size(obj.forces_cell)),...
+                fitStruct.elasticFitTime,'UniformOutput',false);
             
             fitStruct.fitTime = cell(1,n_elements);
-            fitStruct.fitTime(:) = cell(size(obj.forces_cell));
+            fitStruct.fitTime = cellfun(@(x)cell(size(obj.forces_cell)),...
+                fitStruct.fitTime,'UniformOutput',false);
             
             % Open Parallel Pool of MATLAB Workers
             if isempty(gcp('nocreate'))
@@ -1290,9 +1295,6 @@ classdef ViscoFit
                 % Clean up the workers (memory management)
                 parfevalOnAll(poolobj, @clearvars, 0);
             end
-            
-            % Start the timer
-            tic;
             
             % For Matlab's Parfor, we have to explicitly define the loop
             % bounds ahead of time:
@@ -1314,10 +1316,10 @@ classdef ViscoFit
             % Begin the iterative term introduction loop
             for i = 1:n_elements
 
-                progressString = sprintf('Viscoelastic Force Map Analysis\n%d Viscoelastic Elements (%s config.)\nAnalyzing Pixels...',i,model);
+                progressString = sprintf('Viscoelastic Force Map Analysis\n%d Viscoelastic Element(s) [%s]\nAnalyzing Pixels...',i,model);
                 hbar = parfor_progressbar(n_pixels,progressString);
                 warning('off');
-                parfor j = 1:n_pixels
+                for j = 1:n_pixels
 
                     % Look to see if there are old results available to provide
                     % intelligent guesses for our initial conditions. This will
@@ -1434,7 +1436,7 @@ classdef ViscoFit
 
                     end
 
-                    preFitting = toc;
+                    tic;
                     switch solver
                         case 'nelder-mead'
 
@@ -1607,7 +1609,7 @@ classdef ViscoFit
                     [upperParamCIMap{j},lowerParamCIMap{j}] = obj.getParamsCI(beta_dist,0.95);
 
                     % Store the timing for this model configuration fit
-                    fitTimeMap{j} = postFitting-preFitting;
+                    fitTimeMap{j} = postFitting;
 
                 end % End Pixel Loop
                 close(hbar);
@@ -1629,6 +1631,7 @@ classdef ViscoFit
                     % introduction.
 
                     break;
+                    
                 end
                 
                 % Store updated values in output structure

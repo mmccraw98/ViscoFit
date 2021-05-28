@@ -535,7 +535,7 @@ elseif(strcmpi(extension,valid_extensions{2}))
         
         for j=1:size(Temp_InfoDir_Segments,1)
             fid=fopen(sprintf('ForceCurvesMatalabExtracted\\%s\\%s\\%s\\%s\\%s',FileName,'segments',InfoDir_Segments(folderToEval(1,i)).name,'channels',Temp_InfoDir_Segments(j).name));
-            flag_temp=fread(fid,'int32');
+            flag_temp=fread(fid,'int32',0,'b');
             fclose(fid);
             temp=strsplit(Temp_InfoDir_Segments(j).name,'.');
             if(~strcmp(FC_Data(j).Channel_name,temp{1,1}))
@@ -735,7 +735,7 @@ elseif(strcmpi(extension,valid_extensions{4}))
             for j=1:size(Temp_InfoDir_Segments,1)
                 
                 fid=fopen(sprintf('ForceCurvesMatalabExtracted\\%s\\%s\\%d\\%s\\%s\\%s\\%s',FileName,'index',i_pix-1,'segments',InfoDir_Segments(folderToEval(1,i)).name,'channels',Temp_InfoDir_Segments(j).name));
-                flag_temp=fread(fid,'int32');
+                flag_temp=fread(fid,'int32',0,'b');
                 fclose(fid);
                 temp=strsplit(Temp_InfoDir_Segments(j).name,'.');
                 if(~strcmp(FC_Data(j).Channel_name,temp{1,1}))
@@ -763,12 +763,12 @@ elseif(strcmpi(extension,valid_extensions{4}))
 
         FC_Data_out(2).Channel_name = 'd';
         idx = find(strcmpi({FC_Data.Channel_name},'vDeflection'));
-        FC_Data_out(2).extend = -FC_Data(idx).extend.Data_distance;
-        FC_Data_out(2).retract = -FC_Data(idx).retract.Data_distance;
+        FC_Data_out(2).extend = FC_Data(idx).extend.Data_distance;
+        FC_Data_out(2).retract = FC_Data(idx).retract.Data_distance;
         
         FC_Data_out(3).Channel_name = 'F'; 
-        FC_Data_out(3).extend = -FC_Data(idx).extend.Data_force;
-        FC_Data_out(3).retract = -FC_Data(idx).retract.Data_force;
+        FC_Data_out(3).extend = FC_Data(idx).extend.Data_force;
+        FC_Data_out(3).retract = FC_Data(idx).retract.Data_force;
         
         FC_Data_out(4).Channel_name = 't';
         header_location2=fullfile(InfoDir(1).folder,'header.properties');

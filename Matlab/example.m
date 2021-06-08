@@ -43,7 +43,6 @@ for i_dir = 1:length(Folders)
     % tipGeom = tipOpts{indx};
     
     % Alternatively, set those values manually
-    minTimescale = 1e-4;                    % This is the time value on which the first viscoelastic element will be centered
     tipGeom = "spherical";                  % The experiment tip geometry for the files that are being loaded
     
     % Settings for how to use the loaded data during analysis
@@ -116,8 +115,10 @@ for i_dir = 1:length(Folders)
     % Make a structure for our settings
     classSettings = struct;
 
+    timescaleEst = 10^mode(ceil(log10(gradient([times{:}]))));
+    
     % Test the Maxwell
-    classSettings.minTimescale = 1e-4;              % Timescale for the first viscoelastic element
+    classSettings.minTimescale = 10*timescaleEst;   % Timescale for the first viscoelastic element
     classSettings.nu = nu;                          % Sample Poisson Ratio for all curves
     classSettings.tipGeom = tipGeom;                % Tip geometry for these experiments
     classSettings.fitLog = false;                   % Log-scale-resample the data before fitting (faster)

@@ -1,4 +1,4 @@
-function [out] = LR_Voigt(params,time,dt,force,radius,varargin)
+function [out] = LR_Voigt(params,time,dt,force,tipSize,varargin)
 %LR_Voigt Calculate Generalized Kelvin-Voigt L&R Action Integral
 %   This function generates the Generalized K-V Model response to the
 %   force (F) that is applied by a spherical indenter in time (time) 
@@ -35,7 +35,7 @@ end
 % Calculate coefficient for the action integral
 switch tipGeom
     case "spherical"
-        c = (3*(1-nu))./(8*sqrt(radius));
+        c = (3*(1-nu))./(8*sqrt(tipSize));
     case "conical"
         c = 1./((2.*tan(tipSize))./(pi.*(1-nu.^2)));
 end

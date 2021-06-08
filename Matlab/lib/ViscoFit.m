@@ -213,8 +213,8 @@ classdef ViscoFit
                     error_global = sum((obj.forces-test_forces).^2);
                     errorsum = sum(error_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
-                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata) ...
+                        1./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
                 otherwise
@@ -339,8 +339,8 @@ classdef ViscoFit
                     sse_global = sum(((obj.indentations.^beta)-test_indentations).^2);
                     errorsum = sum(sse_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
-                        ./(length(ydata)-length(params)),obj.indentations_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata)...
+                        1./(length(ydata)-length(params)),obj.indentations_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_indentations-(obj.indentations.^beta)).^2).*normtemp);
                 otherwise
@@ -462,8 +462,8 @@ classdef ViscoFit
                     sse_global = sum((obj.forces-test_forces).^2);
                     errorsum = sum(sse_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
-                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata)...
+                        1./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
                 otherwise

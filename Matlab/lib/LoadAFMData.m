@@ -382,7 +382,6 @@ for k = 1:length(Files)
 end
 
 for k = 1:size(dataStruct,2)
-    
 
     % Find the approach portion of the data    
     [~, z_max_ind] = max(dataStruct(k).z);
@@ -548,7 +547,65 @@ for k = 1:size(dataStruct,2)
     % Get Repulsive Force Application Portion of the Data
     n_offset = length(dataStruct(k).d_corrected(dSmoothMin:z_max_ind));
     n_offset_smooth = length(dataStruct(k).d_corrected(dSmoothMin:(z_max_ind-delay)));
-    dt = dataStruct(k).dt;
+
+    if n_offset < 10 || n_offset_smooth < 10
+        fprintf('\nBad Pixel: %d\nStoring fake data here.\n',k);
+        
+        % Store fake arrays so the script doesn't fail for this bad pixel.
+        dataStruct(k).t_r = dataStruct(k).t;
+        dataStruct(k).z_r = NaN(size(dataStruct(k).z));
+        dataStruct(k).d_r = NaN(size(dataStruct(k).d));
+        dataStruct(k).t_r_smooth = dataStruct(k).t_r;
+        dataStruct(k).z_r_smooth = NaN(size(dataStruct(k).z));
+        dataStruct(k).d_r_smooth = NaN(size(dataStruct(k).d));
+        dataStruct(k).tip_rep_pos = 1;
+        dataStruct(k).tip_rep_pos_smooth = 1;
+        tip_rep_pos_all(k) = 1;
+        dSmoothMinAll(k) = 1;
+        dataStruct(k).F_r = NaN(size(dataStruct(k).d));
+        dataStruct(k).h_r = NaN(size(dataStruct(k).d));
+        dataStruct(k).F_r_smooth = NaN(size(dataStruct(k).d));
+        dataStruct(k).h_r_smooth = NaN(size(dataStruct(k).d));
+        dataStruct(k).z_max_ind = length(dataStruct(k).z);
+        dataStruct(k).z_max_ind_smooth = length(dataStruct(k).z);
+        dataStruct(k).dSmoothMin = 1;
+        dataStruct(k).F_r_log = NaN(size(dataStruct(k).d));
+        dataStruct(k).t_r_log = NaN(size(dataStruct(k).d));
+        
+%         if createAverage
+%             n_rows = size(dataStruct,2);
+%             v_approach_temp = round(v_approach,2,'significant');
+%             v_unique_temp = (unique(v_approach_temp));
+%             for kk = 1:length(v_unique_temp)
+%                 dataStruct(n_rows+kk).z_average = NaN(size(dataStruct(k).z));
+%                 dataStruct(n_rows+kk).d_average = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).t_average = dataStruct(k).t;
+%                 dataStruct(n_rows+kk).t_r = NaN(size(dataStruct(k).t));
+%                 dataStruct(n_rows+kk).z_r = NaN(size(dataStruct(k).z));
+%                 dataStruct(n_rows+kk).d_r = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).t_r_smooth = dataStruct(k).t;
+%                 dataStruct(n_rows+kk).z_r_smooth = NaN(size(dataStruct(k).z));
+%                 dataStruct(n_rows+kk).d_r_smooth = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).tip_rep_pos = 1;
+%                 dataStruct(n_rows+kk).tip_rep_pos_smooth = 1;
+%                 tip_rep_pos_all(n_rows+kk) = 1;
+%                 dSmoothMinAll(n_rows+kk) = 1;
+%                 dataStruct(n_rows+kk).F_r = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).h_r = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).F_r_smooth = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).h_r_smooth = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).z_max_ind = length(dataStruct(k).z);
+%                 dataStruct(n_rows+kk).z_max_ind_smooth = length(dataStruct(k).z);
+%                 dataStruct(n_rows+kk).dSmoothMin = 1;
+%                 dataStruct(n_rows+kk).F_r_log = NaN(size(dataStruct(k).d));
+%                 dataStruct(n_rows+kk).t_r_log = NaN(size(dataStruct(k).d));
+%             end
+%         end
+        
+        continue;
+
+    end
+    dt = dataStruct(k).dt;    
     
     % Create a "clean" repulsive time array
     t_rep = linspace(0,(n_offset-1)*dt,n_offset);
@@ -570,22 +627,22 @@ for k = 1:size(dataStruct,2)
     % and walking backward ('reverse').
     if strcmp(findRep,'forward')
         tip_rep_pos = find(tip_rep>0,1);                                   % Find first position above 0
-        if isempty(tip_rep_pos) || tip_rep_pos == 0
+        if isempty(tip_rep_pos) || tip_rep_pos < 2
             tip_rep_pos = 2;
         end
         
         tip_rep_pos_smooth = find(tip_rep_smooth>0,1);                     % Find first position above 0
-        if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
+        if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth < 2
             tip_rep_pos_smooth = 2;
         end
     elseif strcmp(findRep,'reverse')
         tip_rep_pos = (length(tip_rep) - find(flip(tip_rep)<0,1));       % Find last position above 0
-        if isempty(tip_rep_pos) || tip_rep_pos == 0
+        if isempty(tip_rep_pos) || tip_rep_pos < 2
             tip_rep_pos = 2;
         end
         
         tip_rep_pos_smooth = (length(tip_rep_smooth) - find(flip(tip_rep_smooth)<0,1));   % Find last position above 0
-        if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth == 0
+        if isempty(tip_rep_pos_smooth) || tip_rep_pos_smooth < 2
             tip_rep_pos_smooth = 2;
         end
     end
@@ -593,7 +650,7 @@ for k = 1:size(dataStruct,2)
     if tip_rep_pos_smooth > length(t_rep_smooth)
         tip_rep_pos_smooth = length(t_rep_smooth);
     end
-    
+        
     % Store the repulsive force application portion of the dataset.
     dataStruct(k).t_r = t_rep(tip_rep_pos:end) - t_rep(tip_rep_pos-1);
     dataStruct(k).z_r = z_rep(tip_rep_pos:end) - z_rep(tip_rep_pos-1);

@@ -1,12 +1,15 @@
+% Make a clean slate
 clear all
 close all
 clc
 
+% Add the library to our path
 addpath(genpath([pwd filesep 'lib']));
 
 % Pick the AFM Data Directory and Choose Data Extraction Settings
 originalPath = uigetdir(pwd,...
         'Select the Folder Containing Your AFM Files');
+savePrependIn = 'TESTMAP';
 
 % Check to see if there are subdirectories
 dirContents = dir(originalPath);
@@ -100,6 +103,7 @@ for i_dir = 1:length(Folders)
     indentations = cell(size(forces));
     tipSize = cell(size(forces));
     nu = cell(size(forces));
+    mapSize = cell(size(forces));
 
     for i = 1:loopMax
         if useSmoothData
@@ -113,6 +117,7 @@ for i_dir = 1:length(Folders)
         end
         tipSize{i} = dataStruct(indShift+i).r_tip;
         nu{i} = dataStruct(indShift+i).nu_sample;
+        mapSize{i} = dataStruct(indShift+i).mapSize;
     end
     
     % Memory Management
@@ -139,21 +144,33 @@ for i_dir = 1:length(Folders)
     % Test the Maxwell
     fitSettings.solver = 'nelder-mead';             % Fit using Nelder-Mead Simplex
     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_elements = 3;                     % Fit iteratively for up to 4 elements
+    fitSettings.n_elements = 1;                     % Fit iteratively for up to 3 elements
     fitSettings.elasticSetting = 1;                 % Include Elastic Term
     fitSettings.fluidSetting = 0;                   % No Steady-State Fluidity
-    fitSettings.n_iterations = 200;                 % Use 200 random initializations
-    fitSettings.n_fitIterations = 2e3;              % No. of iterations for solver
+    fitSettings.n_iterations = 10;                  % Use 10 random initializations
+    fitSettings.n_fitIterations = 1e3;              % No. of iterations for solver
     fitSettings.errortype = 'mse';                  % Use Mean-Squared Error during fitting
     maxwellFit_NM = visco.fitMap(fitSettings);
-
+    maxwellFit_NM.mapSize = mode(mapSize);
+    save([path filesep savePrependIn '-FitResults-NelderMead.mat'],'maxwellFit_NM','-v7.3')
+    clearvars maxwellFit_NM
+    
     % Test the Voigt
     fitSettings.model = 'voigt';
     voigtFit_NM = visco.fitMap(fitSettings);
+    voigtFit_NM.mapSize = mode(mapSize);
+    save([path filesep savePrependIn '-FitResults-NelderMead.mat'],'voigtFit_NM','-append')
+    clearvars voigtFit_NM
 
     % Test the PLR
     fitSettings.model = 'PLR';
     PLRFit_NM = visco.fitMap(fitSettings);
+    PLRFit_NM.mapSize = mode(mapSize);
+    save([path filesep savePrependIn '-FitResults-NelderMead.mat'],'PLRFit_NM','-append')
+    clearvars PLRFit_NM
+    
+    % Make a pointer for our now MASSIVE results file
+    outMat = matfile([path filesep savePrependIn '-FitResults-NelderMead.mat']);
 
     % For a custum function, use the below code to pass the appropriate
     % function call to the fitting class. Note that an error will be thrown if
@@ -178,92 +195,106 @@ for i_dir = 1:length(Folders)
         end
         clearvars resultsFigNelder
     end
-    resultsFigNelder = figure('Position',[50 100 300*fitSettings.n_elements 600]);
+    resultsFigNelder = figure('Position',[50 100 1200 600]);
+    maxwellParams = outMat.maxwellFit_NM.bestParams;
+    voigtParams = outMat.voigtFit_NM.bestParams;
+    PLRParams = outMat.PLRFit_NM.bestParams;
     for i = 1:fitSettings.n_elements
-        subplot(1,fitSettings.n_elements,i)
-        title(sprintf('%d Terms',i))
-        hold on
         for j = 1:size(forces,2)
             scatter(times{j},forces{j},50,'rx')
             scatter(times{j},indentations{j}.^(beta),50,'bo')
-            plot(times{j},LR_Maxwell(maxwellFit_NM.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-            plot(times{j},LR_Voigt(voigtFit_NM.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
-            plot(times{j},LR_PLR(PLRFit_NM.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
+            subplot(1,3,1)
+            title('GM')
+            hold on
+            plot(times{j},LR_Maxwell(maxwellParams{i}{j},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
+            hold off
+            subplot(1,3,2)
+            title('GKV')
+            hold on
+            plot(times{j},LR_Voigt(voigtParams{i}{j},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
+            hold off
+            subplot(1,3,3)
+            title('PLR')
+            hold on
+            plot(times{j},LR_PLR(PLRParams{1}{j},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
+            hold off
         end
         grid on
         set(gca,'xscale','log','yscale','log')
         hold off
+        saveas(resultsFigNelder,[path filesep savePrependIn sprintf('-PlotResults-NelderMead-%d_terms.jpg',i)]);
+        saveas(resultsFigNelder,[path filesep savePrependIn sprintf('-PlotResults-NelderMead-%d_terms.fig',i)]);
+        clf(resultsFigNelder)
     end
-    saveas(resultsFigNelder,[path filesep 'PlotResults-NelderMead.jpg']);
-    saveas(resultsFigNelder,[path filesep 'PlotResults-NelderMead.fig']);
-    save([path filesep 'FitResults-NelderMead.mat'],'maxwellFit_NM','voigtFit_NM','PLRFit_NM')
+    clearvars maxwellParams voigtParams PLRParams outMat
+    close(resultsFigNelder)
 
-    % Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
-    % Create the class object
-    % visco = ViscoFit(forces,times,indentations,tipSize,minTimescale,nu,tipGeom);
-
-    % Make a structure for our settings
-    % fitSettings = struct;
-
-    % Test the Maxwell
-    fitSettings.solver = 'nls';                     % Fit using lsqcurvefit
-    fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
-    fitSettings.n_iterations = 200;                 % Use 200 random initializations
-    fitSettings.n_fitIterations = 1e4;              % No. of iterations for solver
-    maxwellFit_NLS = visco.fitMap(fitSettings);
-
-    % Test the Voigt
-    fitSettings.model = 'voigt';
-    voigtFit_NLS = visco.fitMap(fitSettings);
-
-    % Test the PLR
-    fitSettings.model = 'PLR';
-    PLRFit_NLS = visco.fitMap(fitSettings);
-
-    % For a custum function, use the below code to pass the appropriate
-    % function call to the fitting class. Note that an error will be thrown if
-    % you select "custom" for the model type and then don't pass a function
-    % name in the settings.
-    % fitSettings.model = 'custom';
-    % fitSettings.customFunc = @customFuncName;
-    % customFit = visco.fitMap(fitSettings);
-
-    % Check out the results
-    dts = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
-    switch tipGeom
-        case "spherical"
-            beta = 1.5;
-        case "conical"
-            beta = 2;
-    end
-    if exist('resultsFigNLS','var')
-        try
-            close(resultsFigNLS);
-        catch
-        end
-        clearvars resultsFigNLS
-    end
-    resultsFigNLS = figure('Position',[50 300 300*fitSettings.n_elements 600]);
-    for i = 1:fitSettings.n_elements
-        subplot(1,fitSettings.n_elements,i)
-        title(sprintf('%d Terms',i))
-        hold on
-        for j = 1:size(forces,2)
-            scatter(times{j},forces{j},50,'rx')
-            scatter(times{j},indentations{j}.^(beta),50,'bo')
-            plot(times{j},LR_Maxwell(maxwellFit_NLS.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
-            plot(times{j},LR_Voigt(voigtFit_NLS.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
-            plot(times{j},LR_PLR(PLRFit_NLS.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
-        end
-        grid on
-        set(gca,'xscale','log','yscale','log')
-        hold off
-    end
-    saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.jpg']);
-    saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.fig']);
-    save([path filesep 'FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')
+%     % Test the Fitting Functions using Nonlinear Least Squares (lsqcurvefit)
+%     % Create the class object
+%     % visco = ViscoFit(forces,times,indentations,tipSize,minTimescale,nu,tipGeom);
+% 
+%     % Make a structure for our settings
+%     % fitSettings = struct;
+% 
+%     % Test the Maxwell
+%     fitSettings.solver = 'nls';                     % Fit using lsqcurvefit
+%     fitSettings.model = 'maxwell';                  % Use Generalized Maxwell Model
+%     fitSettings.n_iterations = 200;                 % Use 200 random initializations
+%     fitSettings.n_fitIterations = 1e4;              % No. of iterations for solver
+%     maxwellFit_NLS = visco.fitMap(fitSettings);
+% 
+%     % Test the Voigt
+%     fitSettings.model = 'voigt';
+%     voigtFit_NLS = visco.fitMap(fitSettings);
+% 
+%     % Test the PLR
+%     fitSettings.model = 'PLR';
+%     PLRFit_NLS = visco.fitMap(fitSettings);
+% 
+%     % For a custum function, use the below code to pass the appropriate
+%     % function call to the fitting class. Note that an error will be thrown if
+%     % you select "custom" for the model type and then don't pass a function
+%     % name in the settings.
+%     % fitSettings.model = 'custom';
+%     % fitSettings.customFunc = @customFuncName;
+%     % customFit = visco.fitMap(fitSettings);
+% 
+%     % Check out the results
+%     dts = cellfun(@(t) mode(gradient(t)).*ones(size(t)),times,'UniformOutput',false);
+%     switch tipGeom
+%         case "spherical"
+%             beta = 1.5;
+%         case "conical"
+%             beta = 2;
+%     end
+%     if exist('resultsFigNLS','var')
+%         try
+%             close(resultsFigNLS);
+%         catch
+%         end
+%         clearvars resultsFigNLS
+%     end
+%     resultsFigNLS = figure('Position',[50 300 300*fitSettings.n_elements 600]);
+%     for i = 1:fitSettings.n_elements
+%         subplot(1,fitSettings.n_elements,i)
+%         title(sprintf('%d Terms',i))
+%         hold on
+%         for j = 1:size(forces,2)
+%             scatter(times{j},forces{j},50,'rx')
+%             scatter(times{j},indentations{j}.^(beta),50,'bo')
+%             plot(times{j},LR_Maxwell(maxwellFit_NLS.bestParams{i},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'r-','linewidth',3)
+%             plot(times{j},LR_Voigt(voigtFit_NLS.bestParams{i},times{j},dts{j},forces{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'b-','linewidth',3)
+%             plot(times{j},LR_PLR(PLRFit_NLS.bestParams{1},times{j},dts{j},indentations{j},tipSize{j},nu{j},tipGeom,fitSettings.elasticSetting,fitSettings.fluidSetting),'g-','linewidth',3)
+%         end
+%         grid on
+%         set(gca,'xscale','log','yscale','log')
+%         hold off
+%     end
+%     saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.jpg']);
+%     saveas(resultsFigNLS,[path filesep 'PlotResults-NLS.fig']);
+%     save([path filesep 'FitResults-NLS.mat'],'maxwellFit_NLS','voigtFit_NLS','PLRFit_NLS')
     
 end
 
-% Open the originally requested directory
+%% Open the originally requested directory
 winopen(originalPath);

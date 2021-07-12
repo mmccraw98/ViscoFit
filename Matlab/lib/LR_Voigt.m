@@ -37,7 +37,7 @@ switch tipGeom
     case "spherical"
         c = (3*(1-nu))./(8*sqrt(tipSize));
     case "conical"
-        c = 1./((2.*tan(tipSize))./(pi.*(1-nu.^2)));
+        c = 1./((2.*tan(tipSize.*pi./180))./(pi.*(1-nu.^2)));
 end
 
 % Make our Dirac Delta array for the elastic term

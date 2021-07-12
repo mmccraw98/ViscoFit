@@ -213,8 +213,8 @@ classdef ViscoFit
                     error_global = sum((obj.forces-test_forces).^2);
                     errorsum = sum(error_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata) ...
-                        1./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
                 otherwise
@@ -339,8 +339,8 @@ classdef ViscoFit
                     sse_global = sum(((obj.indentations.^beta)-test_indentations).^2);
                     errorsum = sum(sse_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata)...
-                        1./(length(ydata)-length(params)),obj.indentations_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.indentations_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_indentations-(obj.indentations.^beta)).^2).*normtemp);
                 otherwise
@@ -462,8 +462,8 @@ classdef ViscoFit
                     sse_global = sum((obj.forces-test_forces).^2);
                     errorsum = sum(sse_global);
                 case 'mse'
-                    normtemp = cellfun(@(ydata)...
-                        1./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
+                    normtemp = cellfun(@(ydata) (1./(movvar(ydata,3).^2))...
+                        ./(length(ydata)-length(params)),obj.forces_cell,'UniformOutput',false);
                     normtemp = cell2mat(normtemp);
                     errorsum = sum(((test_forces-obj.forces).^2).*normtemp);
                 otherwise
@@ -1065,7 +1065,8 @@ classdef ViscoFit
             
             % Initialize Output Structure
 %             fitStruct = struct;
-            fitStruct = matfile([tempdir 'fitStructTemp.mat'],'Writable',true);
+            tempFile = fullfile(tempdir,'fitStructTemp.mat');
+            fitStruct = matfile(tempFile,'Writable',true);
             
             % Default Settings
             solver = 'nelder-mead';     % Fit using Nelder-Mead Simplex
@@ -1125,16 +1126,18 @@ classdef ViscoFit
             fitStruct.ViscoClass = obj;
             
             % Get the correct objective function for optimization
-            % Note we are referencing static methods here, so we use the
-            % CLASS NAME as the prefix, to avoid broadcasting the entire
-            % class.
+            % Note we are referencing external functions here, so we use
+            % can avoid broadcasting the entire class just to run our
+            % objective map function! Each function has been defined in the
+            % class as a static method, too, for future reference but it is
+            % NOT recommended to use them for the purpose of OPTIMIZATION!
             switch model
                 case 'maxwell'
-                    objFuncMap = @ViscoFit.SSE_Maxwell_Map;
+                    objFuncMap = @SSE_Maxwell_Map;
                 case 'voigt'
-                    objFuncMap = @ViscoFit.SSE_Voigt_Map;
+                    objFuncMap = @SSE_Voigt_Map;
                 case 'plr'
-                    objFuncMap = @ViscoFit.SSE_PLR_Map;
+                    objFuncMap = @SSE_PLR_Map;
                     % The storage roster for plr is different, and requires
                     % the second index to maintain consistency. Thus, we
                     % have to manually force the second term to be fit by
@@ -1143,7 +1146,7 @@ classdef ViscoFit
                     fluidSetting = 1;
                     fitStruct.fluidSetting = fluidSetting;
                 case 'custom'
-                    objFuncMap = @ViscoFit.customFunc_Map;
+                    objFuncMap = @customFunc_Map;
                 otherwise
                     error('Your chosen solver-model combination is not implemented yet.');
             end
@@ -1179,9 +1182,12 @@ classdef ViscoFit
             % Prevent Broadcasting Certain Variables
             minTimescaleTemp = obj.minTimescale;
             lbFluidity = 10^( floor(min(log10(obj.dts)))+1 );
-            dataIn = {obj.times_cell,obj.dts_cell,obj.forces_cell,...
-                obj.indentations_cell,obj.tipSize_cell,obj.nu_cell,...
-                obj.tipGeom,obj.minTimescale};
+            dataIn = cell(n_pixels,1);
+            for i = 1:length(obj.times_cell)
+                dataIn{i} = {obj.times_cell{i},obj.dts_cell{i},obj.forces_cell{i},...
+                    obj.indentations_cell{i},obj.tipSize_cell{i},obj.nu_cell{i},...
+                    obj.tipGeom,obj.minTimescale};
+            end
             
             % Begin the iterative term introduction loop
             fprintf('\nBeginning Map Analysis (%s):\n', model)
@@ -1227,6 +1233,9 @@ classdef ViscoFit
                 
                 fprintf('%d terms...', i)
                 
+                % Initialize Variables
+                paramLen = length(bestParamsMap{1});
+                                
                 parfor j = 1:n_pixels
 
                     % Look to see if there are old results available to provide
@@ -1236,11 +1245,11 @@ classdef ViscoFit
                         % Our current loop has an array of parameters
                         % two-larger than the previous (for the generalized
                         % spring-dashpot rheology models)
-                        beta_in = NaN(length(bestParamsMap{j})+2,1);
+                        beta_in = NaN(paramLen+2,1);
 
                         % Overwrite the NaN values with the previous optimal
                         % parameters.
-                        beta_in(1:length(bestParamsMap{j})) = bestParamsMap{j};
+                        beta_in(1:paramLen) = bestParamsMap{j};
                     else
                         % For the first iteration, there will be four
                         % parameters in total: the elastic element (1), the
@@ -1262,7 +1271,7 @@ classdef ViscoFit
                     beta0_dist = zeros(size(beta_dist));
                     residual_dist = NaN(1,n_iterations);
                     residual_dist_elastic = NaN(size(residual_dist));
-
+                    
                     % Make the upper and lower bounds for this model
                     [tauInds,modulusInds] = getParamIndices(beta_in);
                     ub = zeros(size(beta_in))+eps;
@@ -1343,6 +1352,18 @@ classdef ViscoFit
                             % lb = [...];
 
                     end
+                    
+                    if any(isnan(dataIn{j}{3}))
+                        % This is the "bad pixel" trigger! Skip this pixel
+                        % and enter in NaN for the output data.
+                        elasticFitTimeMap{j} = 0;
+                        fitTimeMap{j} = 0;
+                        
+                        bestParamsMap{j} = beta_dist(:,1);
+                        paramPopulationMap{j} = beta_dist;
+                        paramPopulationResidualsMap{j} = residual_dist;
+                        continue;
+                    end
 
                     tic;
                     switch solver
@@ -1367,7 +1388,7 @@ classdef ViscoFit
                                 for k = 1:n_iterations
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
-                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(dataIn,x,j,elasticSetting,fluidSetting),beta0,options);
+                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,options);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1388,7 +1409,7 @@ classdef ViscoFit
                                 % Get the grid search starting position
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
-                                [beta_dist(:,k),residual_dist(k)] = fminsearch(@(x)objFuncMap(dataIn,x,j,elasticSetting,fluidSetting),beta0,options);
+                                [beta_dist(:,k),residual_dist(k)] = fminsearch(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,options);
                             end
 
                         case 'annealing'
@@ -1423,7 +1444,7 @@ classdef ViscoFit
                                 for k = 1:n_iterations
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
-                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(dataIn,x,j,elasticSetting,fluidSetting),beta0,nelderopts);
+                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fminsearch(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,nelderopts);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1444,7 +1465,7 @@ classdef ViscoFit
                                 % Get the grid search starting position
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
-                                [beta_dist(:,k),residual_dist(k)] = annealOpt(@(x)objFuncMap(dataIn,x,j,elasticSetting,fluidSetting),beta0,annealopts,nelderopts);
+                                [beta_dist(:,k),residual_dist(k)] = annealOpt(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,annealopts,nelderopts);
                             end
 
                         case 'nls'
@@ -1469,7 +1490,7 @@ classdef ViscoFit
                                 for k = 1:n_iterations
                                     % Get the grid search starting position
                                     beta0 = getfield(logspace(ub_rand(1),lb_rand(1),n_iterations),{k});
-                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fmincon(@(x)objFuncMap(dataIn,x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
+                                    [beta_dist_elastic(k),residual_dist_elastic(k)] = fmincon(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb(1),ub(1),[],fminoptions);
                                 end
 
                                 % Clock the timer and save the fitting time
@@ -1490,7 +1511,7 @@ classdef ViscoFit
                                 % Get the grid search starting position
                                 beta0 = makeRandomParams(beta_in,ub_rand,lb_rand,elasticSetting,fluidSetting,newInds);
                                 beta0_dist(:,k) = beta0;
-                                [beta_dist(:,k),residual_dist(k)] = fmincon(@(x)objFuncMap(dataIn,x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb,ub,[],fminoptions);
+                                [beta_dist(:,k),residual_dist(k)] = fmincon(@(x)objFuncMap(dataIn{j},x,elasticSetting,fluidSetting),beta0,[],[],[],[],lb,ub,[],fminoptions);
                             end
 
                         otherwise
@@ -1500,7 +1521,9 @@ classdef ViscoFit
 
                     % Find the best-fit parameters from our population
                     [~,idx] = min(residual_dist,[],'omitnan');
-                    if size(idx,2)>1 idx = (idx(1)); end
+                    if size(idx,2)>1
+                        idx = (idx(1));
+                    end
 
                     % Store the best-fit parameters to be fed forward, and also
                     % save the "less optimal" sets for statistical treatment
@@ -1592,7 +1615,7 @@ classdef ViscoFit
                 fitStruct.fitTime = temp;
                 clearvars temp
                 
-                tmpSize = dir([tempdir 'fitStructTemp.mat']);
+                tmpSize = dir(tempFile);
                 fprintf('complete. Current file size: %1.4g GB\n\n',tmpSize.bytes/(1e9));
                 clearvars tmpSize
                 
@@ -1604,18 +1627,20 @@ classdef ViscoFit
             
             % Create output and clean up the temporary file
             fitStructOut = load(fitStruct.Properties.Source,'-mat');
-            delete(string([tempdir 'fitStructTemp.mat']));
             clearvars fitStruct
+            if exist(tempFile,'file')==2
+                delete(tempFile);
+            end
             
         end % End fitMap()
         
     end % End Methods
     
     methods (Static = true)
-        % Make the map functions, which must be static to avoid overhead
-        % (i.e. sending copies of the entire class obj to all workers).
+        % Make the map functions, which are NOT recommended for use during
+        % optimization, just to help calculate individual pixel SSE values.
         
-        function sse = SSE_Maxwell_Map(data,params,idx,elasticSetting,fluidSetting)
+        function sse = SSE_Maxwell_Map(data,params,elasticSetting,fluidSetting)
             %SSE_Maxwell Calculate the SSE for the Maxwell model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Maxwell Model according to the Lee and Radok indentation
@@ -1629,10 +1654,10 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test forces
-            test_forces = LR_Maxwell(params,data{1}{idx},data{2}{idx},data{4}{idx},data{5}{idx},data{6}{idx},data{7},elasticSetting,fluidSetting);
+            test_forces = LR_Maxwell(params,data{1},data{2},data{4},data{5},data{6},data{7},elasticSetting,fluidSetting);
             
             % calculate global residual
-            sse_global = sum((data{3}{idx}-test_forces).^2);
+            sse_global = sum((data{3}-test_forces).^2);
             sse = sum(sse_global);
             
             [tauInds,modulusInds] = getParamIndices(params);
@@ -1649,7 +1674,7 @@ classdef ViscoFit
             if length(params) > 1
                 if fluidSetting
                     ub(2) = max(tauCenters)*1e2;
-                    lb(2) = min(data{2}{idx});
+                    lb(2) = min(data{2});
                 end
             end
             
@@ -1658,7 +1683,7 @@ classdef ViscoFit
             end
         end % End Maxwell SSE Map Function
         
-        function sse = SSE_Voigt_Map(data,params,idx,elasticSetting,fluidSetting)
+        function sse = SSE_Voigt_Map(data,params,elasticSetting,fluidSetting)
             %SSE_Voigt Calculate the SSE for the Voigt model
             %   Calculate the Sum of Squared Errors for the Generalized
             %   Voigt Model according to the Lee and Radok indentation
@@ -1672,7 +1697,7 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test indentation
-            test_indentations = LR_Voigt(params,data{1}{idx},data{2}{idx},data{3}{idx},data{5}{idx},data{6}{idx},data{7},elasticSetting,fluidSetting);
+            test_indentations = LR_Voigt(params,data{1},data{2},data{3},data{5},data{6},data{7},elasticSetting,fluidSetting);
             
             switch data{7}
                 case "spherical"
@@ -1682,7 +1707,7 @@ classdef ViscoFit
             end
             
             % calculate global residual
-            sse_global = sum(((data{4}{idx}.^beta)-test_indentations).^2);
+            sse_global = sum(((data{4}.^beta)-test_indentations).^2);
             sse = sum(sse_global);
             
             [tauInds,modulusInds] = getParamIndices(params);
@@ -1708,7 +1733,7 @@ classdef ViscoFit
             end
         end % End Voigt SSE Map Function
         
-        function sse = SSE_PLR_Map(data,params,idx,varargin)
+        function sse = SSE_PLR_Map(data,params,varargin)
             %SSE_PLR_Map Calculate the SSE for the PLR model
             %   Calculate the Sum of Squared Errors for the Power Law
             %   Rheology Model according to the Lee and Radok indentation
@@ -1722,10 +1747,10 @@ classdef ViscoFit
             %   Sum of Squared Errors for that particular pixel.
             
             % Calculate test forces
-            test_forces = LR_PLR(params,data{1}{idx},data{2}{idx},data{4}{idx},data{5}{idx},data{6}{idx},data{7});
+            test_forces = LR_PLR(params,data{1},data{2},data{4},data{5},data{6},data{7});
             
             % calculate global residual
-            sse_global = sum((data{3}{idx}-test_forces).^2);
+            sse_global = sum((data{3}-test_forces).^2);
             sse = sum(sse_global);
             
             % Power Law Rheology Roster:
